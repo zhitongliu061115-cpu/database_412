@@ -1,6 +1,7 @@
 ﻿#include "common.h"
 #include "SQLParser.h"
 
+//TEST
 int main() {
     std::cout << "==============================\n";
     std::cout << "  简易DBMS (模块化版)\n";
