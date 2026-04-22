@@ -1,10 +1,10 @@
-#include "RecordManager.h"
+ï»¿#include "RecordManager.h"
 #include "FieldManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
 
 RecordManager::RecordManager() {
-    fileManager = &FileManager::getInstance();  // ÔÚ¹¹Ôìº¯ÊıÌåÄÚ³õÊ¼»¯
+    fileManager = &FileManager::getInstance();  // åœ¨æ„é€ å‡½æ•°ä½“å†…åˆå§‹åŒ–
 }
 
 RecordManager& RecordManager::getInstance() {
@@ -32,7 +32,7 @@ void RecordManager::writeRecs(const std::string& tname, const std::vector<std::s
 bool RecordManager::insertRecord(const std::string& tname, const std::vector<std::string>& values) {
     auto flds = FieldManager::getInstance().getFields(tname);
     if (values.size() != flds.size()) {
-        std::cout << "Err: ÖµÊıÁ¿²»Æ¥Åä (ĞèÒª " << flds.size() << ")\n";
+        std::cout << "Err: å€¼æ•°é‡ä¸åŒ¹é… (éœ€è¦ " << flds.size() << ")\n";
         return false;
     }
 
@@ -40,7 +40,7 @@ bool RecordManager::insertRecord(const std::string& tname, const std::vector<std
     for (size_t i = 0; i < values.size(); i++) {
         std::string v = values[i];
         trim(v);
-        // È¥³ıÒıºÅ
+        // å»é™¤å¼•å·
         if (!v.empty() && (v.front() == '\'' || v.front() == '"')) {
             v = v.substr(1, v.size() - 2);
         }
@@ -51,7 +51,7 @@ bool RecordManager::insertRecord(const std::string& tname, const std::vector<std
     recs.push_back(line);
     writeRecs(tname, recs);
 
-    // ¸üĞÂ±í¼ÇÂ¼Êı
+    // æ›´æ–°è¡¨è®°å½•æ•°
     auto tableOpt = TableManager::getInstance().getTable(tname);
     if (tableOpt.has_value()) {
         TableInfo t = tableOpt.value();
@@ -60,7 +60,7 @@ bool RecordManager::insertRecord(const std::string& tname, const std::vector<std
         TableManager::getInstance().updateTable(tname, t);
     }
 
-    std::cout << "OK: ²åÈë³É¹¦\n";
+    std::cout << "OK: æ’å…¥æˆåŠŸ\n";
     return true;
 }
 
@@ -80,7 +80,7 @@ bool RecordManager::selectRecords(const std::string& tname) {
             std::cout << cols[i] << (i == cols.size() - 1 ? "\n" : "\t");
         }
     }
-    std::cout << "¹² " << recs.size() << " Ìõ¼ÇÂ¼\n\n";
+    std::cout << "å…± " << recs.size() << " æ¡è®°å½•\n\n";
     return true;
 }
 
@@ -94,13 +94,13 @@ bool RecordManager::updateRecord(const std::string& tname, const std::string& co
         }
     }
     if (col_idx == -1) {
-        std::cout << "Err: ×Ö¶Î²»´æÔÚ\n";
+        std::cout << "Err: å­—æ®µä¸å­˜åœ¨\n";
         return false;
     }
 
     auto recs = readRecs(tname);
     if (row < 0 || row >= static_cast<int>(recs.size())) {
-        std::cout << "Err: ĞĞºÅÎŞĞ§\n";
+        std::cout << "Err: è¡Œå·æ— æ•ˆ\n";
         return false;
     }
 
@@ -119,7 +119,7 @@ bool RecordManager::updateRecord(const std::string& tname, const std::string& co
     recs[row] = newline;
 
     writeRecs(tname, recs);
-    std::cout << "OK: ¸üĞÂ³É¹¦\n";
+    std::cout << "OK: æ›´æ–°æˆåŠŸ\n";
     return true;
 }
 
@@ -132,12 +132,12 @@ bool RecordManager::deleteRecord(const std::string& tname, int row) {
         recs.erase(recs.begin() + row);
     }
     else {
-        std::cout << "Err: ĞĞºÅÎŞĞ§\n";
+        std::cout << "Err: è¡Œå·æ— æ•ˆ\n";
         return false;
     }
     writeRecs(tname, recs);
 
-    // ¸üĞÂ±í¼ÇÂ¼Êı
+    // æ›´æ–°è¡¨è®°å½•æ•°
     auto tableOpt = TableManager::getInstance().getTable(tname);
     if (tableOpt.has_value()) {
         TableInfo t = tableOpt.value();
@@ -146,6 +146,6 @@ bool RecordManager::deleteRecord(const std::string& tname, int row) {
         TableManager::getInstance().updateTable(tname, t);
     }
 
-    std::cout << "OK: É¾³ı³É¹¦\n";
+    std::cout << "OK: åˆ é™¤æˆåŠŸ\n";
     return true;
 }

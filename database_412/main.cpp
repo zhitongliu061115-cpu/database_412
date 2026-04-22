@@ -1,10 +1,10 @@
-#include "common.h"
+ï»¿#include "common.h"
 #include "SQLParser.h"
 
 int main() {
     std::cout << "==============================\n";
-    std::cout << "  ¼òÒ×DBMS (Ä£¿é»¯°æ)\n";
-    std::cout << "  ÊäÈë HELP ²é¿´ÃüÁî\n";
+    std::cout << "  ç®€æ˜“DBMS (æ¨¡å—åŒ–ç‰ˆ)\n";
+    std::cout << "  è¾“å…¥ HELP æŸ¥çœ‹å‘½ä»¤\n";
     std::cout << "==============================\n\n";
 
     MKDIR("data");
