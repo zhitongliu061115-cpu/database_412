@@ -1,11 +1,20 @@
+#include "common.h"
+#include "SQLParser.h"
 
-#include <iostream>
-
-// 程序入口函数，所有 C++ 程序都从这里开始运行
 int main() {
+    std::cout << "==============================\n";
+    std::cout << "  简易DBMS (模块化版)\n";
+    std::cout << "  输入 HELP 查看命令\n";
+    std::cout << "==============================\n\n";
 
-    std::cout << "Hello World" << std::endl;
+    MKDIR("data");
+    SQLParser& parser = SQLParser::getInstance();
 
-    // 程序正常结束
+    std::string line;
+    while (true) {
+        std::cout << (g_current_db.empty() ? "DBMS> " : "DBMS [" + g_current_db + "]> ");
+        std::getline(std::cin, line);
+        parser.execute(line);
+    }
     return 0;
 }
