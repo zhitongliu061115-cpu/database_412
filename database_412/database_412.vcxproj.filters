@@ -18,5 +18,49 @@
     <ClCompile Include="main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="common.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DatabaseManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FieldManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FileManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="RecordManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLParser.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="TableManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="common.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DatabaseManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="FieldManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="FileManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="RecordManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SQLParser.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="TableManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
