@@ -37,7 +37,7 @@ DBMS_Client::DBMS_Client(QWidget* parent)
     ui.resultTable->setItem(1, 2, new QTableWidgetItem("100.50"));
 
     // 4. 初始化日志输出
-    ui.logBrowser->append("[系统] 客户端已启动");
+    ui.logBrowser->append("[系统] 客户端已启动...");
     ui.logBrowser->append("[系统] 等待连接到 DBMS 服务端");
     ui.logBrowser->append("[系统] 连接成功");
     ui.logBrowser->append("[用户] 查询到2条有效记录");
