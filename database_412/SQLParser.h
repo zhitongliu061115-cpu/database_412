@@ -11,6 +11,7 @@ public:
     SQLParser& operator=(const SQLParser&) = delete;
 
     void execute(const std::string& sql);
+    std::string executeWithOutput(const std::string& sql, bool* shouldExit = nullptr);
 
 private:
     SQLParser() = default;
@@ -18,4 +19,4 @@ private:
     void showHelp();
 };
 
-#endif // SQL_PARSER_H#pragma once
+#endif // SQL_PARSER_H

@@ -1,8 +1,22 @@
-#include "SQLParser.h"
+ï»¿#include "SQLParser.h"
 #include "DatabaseManager.h"
 #include "TableManager.h"
 #include "FieldManager.h"
 #include "RecordManager.h"
+#include <cstdlib>
+
+namespace {
+class CoutRedirectGuard {
+public:
+    explicit CoutRedirectGuard(std::ostream& target) : oldBuf_(std::cout.rdbuf(target.rdbuf())) {}
+    ~CoutRedirectGuard() {
+        std::cout.rdbuf(oldBuf_);
+    }
+
+private:
+    std::streambuf* oldBuf_;
+};
+}
 
 SQLParser& SQLParser::getInstance() {
     static SQLParser instance;
@@ -10,7 +24,7 @@ SQLParser& SQLParser::getInstance() {
 }
 
 void SQLParser::showHelp() {
-    std::cout << "\nÖ§³ÖµÄÃüÁî:\n"
+    std::cout << "\næ”¯æŒçš„å‘½ä»¤:\n"
         << "  CREATE DATABASE <name>\n"
         << "  DROP DATABASE <name>\n"
         << "  USE <db_name>\n"
@@ -27,12 +41,37 @@ void SQLParser::showHelp() {
 }
 
 void SQLParser::execute(const std::string& sql) {
+    bool shouldExit = false;
+    std::string output = executeWithOutput(sql, &shouldExit);
+    if (!output.empty()) {
+        std::cout << output;
+    }
+    if (shouldExit) {
+        std::exit(0);
+    }
+}
+
+std::string SQLParser::executeWithOutput(const std::string& sql, bool* shouldExit) {
+    bool exitFlag = false;
+    std::ostringstream capture;
+    CoutRedirectGuard guard(capture);
+
     std::string s = sql;
     trim(s);
-    if (s.empty()) return;
+    if (s.empty()) {
+        if (shouldExit != nullptr) {
+            *shouldExit = false;
+        }
+        return capture.str();
+    }
 
     auto tokens = split(s, ' ');
-    if (tokens.empty()) return;
+    if (tokens.empty()) {
+        if (shouldExit != nullptr) {
+            *shouldExit = false;
+        }
+        return capture.str();
+    }
 
     std::string cmd = toUpper(tokens[0]);
 
@@ -41,13 +80,13 @@ void SQLParser::execute(const std::string& sql) {
             std::string type = toUpper(tokens[1]);
             if (type == "DATABASE") DatabaseManager::getInstance().createDB(tokens[2]);
             else if (type == "TABLE") TableManager::getInstance().createTable(tokens[2]);
-            else std::cout << "Err: Î´ÖªµÄ CREATE ÀàÐÍ\n";
+            else std::cout << "Err: æœªçŸ¥çš„ CREATE ç±»åž‹\n";
         }
         else if (cmd == "DROP" && tokens.size() > 2) {
             std::string type = toUpper(tokens[1]);
             if (type == "DATABASE") DatabaseManager::getInstance().dropDB(tokens[2]);
             else if (type == "TABLE") TableManager::getInstance().dropTable(tokens[2]);
-            else std::cout << "Err: Î´ÖªµÄ DROP ÀàÐÍ\n";
+            else std::cout << "Err: æœªçŸ¥çš„ DROP ç±»åž‹\n";
         }
         else if (cmd == "USE" && tokens.size() > 1) {
             DatabaseManager::getInstance().useDB(tokens[1]);
@@ -67,29 +106,29 @@ void SQLParser::execute(const std::string& sql) {
                     FieldManager::getInstance().modifyField(tname, tokens[4], tokens[5]);
                 }
                 else {
-                    std::cout << "Err: ALTER ²Ù×÷²»Ö§³Ö\n";
+                    std::cout << "Err: ALTER æ“ä½œä¸æ”¯æŒ\n";
                 }
             }
             else {
-                std::cout << "Err: Óï·¨´íÎó£¬ÕýÈ·¸ñÊ½: ALTER TABLE <tname> ...\n";
+                std::cout << "Err: è¯­æ³•é”™è¯¯ï¼Œæ­£ç¡®æ ¼å¼: ALTER TABLE <tname> ...\n";
             }
         }
         else if (cmd == "INSERT" && tokens.size() > 3) {
             // INSERT INTO <tname> VALUES ...
             if (toUpper(tokens[1]) == "INTO" && tokens.size() > 2) {
                 std::string tname = tokens[2];
-                size_t val_pos = s.find("VALUES");
+                size_t val_pos = toUpper(s).find("VALUES");
                 if (val_pos != std::string::npos) {
                     std::string val_part = s.substr(val_pos + 6);
                     auto vals = split(val_part, ',');
                     RecordManager::getInstance().insertRecord(tname, vals);
                 }
                 else {
-                    std::cout << "Err: È±ÉÙ VALUES\n";
+                    std::cout << "Err: ç¼ºå°‘ VALUES\n";
                 }
             }
             else {
-                std::cout << "Err: Óï·¨´íÎó£¬ÕýÈ·¸ñÊ½: INSERT INTO <tname> VALUES ...\n";
+                std::cout << "Err: è¯­æ³•é”™è¯¯ï¼Œæ­£ç¡®æ ¼å¼: INSERT INTO <tname> VALUES ...\n";
             }
         }
         else if (cmd == "SELECT" && tokens.size() > 3) {
@@ -98,7 +137,7 @@ void SQLParser::execute(const std::string& sql) {
                 RecordManager::getInstance().selectRecords(tokens[3]);
             }
             else {
-                std::cout << "Err: ½öÖ§³Ö SELECT * FROM <tname>\n";
+                std::cout << "Err: ä»…æ”¯æŒ SELECT * FROM <tname>\n";
             }
         }
         else if (cmd == "UPDATE" && tokens.size() > 5) {
@@ -109,45 +148,50 @@ void SQLParser::execute(const std::string& sql) {
                 if (tokens[4] == "=" && tokens.size() > 5) {
                     std::string val = tokens[5];
                     int row = 0;
-                    if (tokens.size() > 7 && toUpper(tokens[6]) == "WHERE" && tokens.size() > 8 && tokens[7] == "row" && tokens[8] == "=") {
+                    if (tokens.size() > 9 && toUpper(tokens[6]) == "WHERE" && tokens[7] == "row" && tokens[8] == "=") {
                         row = std::stoi(tokens[9]);
                     }
                     RecordManager::getInstance().updateRecord(tname, col, val, row);
                 }
                 else {
-                    std::cout << "Err: Óï·¨´íÎó£¬ÕýÈ·¸ñÊ½: UPDATE <tname> SET <col> = <val>\n";
+                    std::cout << "Err: è¯­æ³•é”™è¯¯ï¼Œæ­£ç¡®æ ¼å¼: UPDATE <tname> SET <col> = <val>\n";
                 }
             }
             else {
-                std::cout << "Err: Óï·¨´íÎó£¬ÕýÈ·¸ñÊ½: UPDATE <tname> SET <col> = <val>\n";
+                std::cout << "Err: è¯­æ³•é”™è¯¯ï¼Œæ­£ç¡®æ ¼å¼: UPDATE <tname> SET <col> = <val>\n";
             }
         }
         else if (cmd == "DELETE" && tokens.size() > 2) {
             // DELETE FROM <tname> [WHERE row = <n>]
             if (toUpper(tokens[1]) == "FROM" && tokens.size() > 2) {
                 std::string tname = tokens[2];
-                int row = -1;  // -1 ±íÊ¾É¾³ýËùÓÐ
-                if (tokens.size() > 5 && toUpper(tokens[3]) == "WHERE" && tokens.size() > 5 && tokens[4] == "row" && tokens[5] == "=" && tokens.size() > 6) {
+                int row = -1;  // -1 è¡¨ç¤ºåˆ é™¤æ‰€æœ‰
+                if (tokens.size() > 6 && toUpper(tokens[3]) == "WHERE" && tokens[4] == "row" && tokens[5] == "=") {
                     row = std::stoi(tokens[6]);
                 }
                 RecordManager::getInstance().deleteRecord(tname, row);
             }
             else {
-                std::cout << "Err: Óï·¨´íÎó£¬ÕýÈ·¸ñÊ½: DELETE FROM <tname>\n";
+                std::cout << "Err: è¯­æ³•é”™è¯¯ï¼Œæ­£ç¡®æ ¼å¼: DELETE FROM <tname>\n";
             }
         }
         else if (cmd == "EXIT" || cmd == "QUIT") {
-            std::cout << "ÔÙ¼û£¡\n";
-            exit(0);
+            std::cout << "å†è§ï¼\n";
+            exitFlag = true;
         }
         else if (cmd == "HELP") {
             showHelp();
         }
         else {
-            std::cout << "Î´ÖªÃüÁî£¬ÊäÈë HELP ²é¿´°ïÖú\n";
+            std::cout << "æœªçŸ¥å‘½ä»¤ï¼Œè¾“å…¥ HELP æŸ¥çœ‹å¸®åŠ©\n";
         }
     }
     catch (const std::exception& e) {
-        std::cout << "Ö´ÐÐ´íÎó: " << e.what() << std::endl;
+        std::cout << "æ‰§è¡Œé”™è¯¯: " << e.what() << std::endl;
     }
+
+    if (shouldExit != nullptr) {
+        *shouldExit = exitFlag;
+    }
+    return capture.str();
 }

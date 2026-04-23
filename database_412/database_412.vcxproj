@@ -129,6 +129,7 @@
     <ClCompile Include="FileManager.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="RecordManager.cpp" />
+    <ClCompile Include="SocketServer.cpp" />
     <ClCompile Include="SQLParser.cpp" />
     <ClCompile Include="TableManager.cpp" />
   </ItemGroup>
@@ -138,6 +139,7 @@
     <ClInclude Include="FieldManager.h" />
     <ClInclude Include="FileManager.h" />
     <ClInclude Include="RecordManager.h" />
+    <ClInclude Include="SocketServer.h" />
     <ClInclude Include="SQLParser.h" />
     <ClInclude Include="TableManager.h" />
   </ItemGroup>

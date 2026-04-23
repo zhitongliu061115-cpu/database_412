@@ -39,6 +39,9 @@
     <ClCompile Include="TableManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="SocketServer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h">
@@ -60,6 +63,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="TableManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SocketServer.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

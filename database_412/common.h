@@ -1,7 +1,7 @@
-#ifndef COMMON_H
+ï»¿#ifndef COMMON_H
 #define COMMON_H
 
-#define _CRT_SECURE_NO_WARNINGS  // ½â¾ö strncpy µÈº¯ÊýµÄ°²È«¾¯¸æ
+#define _CRT_SECURE_NO_WARNINGS  // keep compatibility for MSVC secure CRT warnings
 
 #include <string>
 #include <vector>
@@ -24,15 +24,15 @@
 #define MKDIR(path) mkdir(path, 0755)
 #endif
 
-// ³£Á¿
+// constants
 constexpr uint32_t MAX_NAME_LEN = 128;
 constexpr uint32_t MAX_PATH_LEN = 256;
 constexpr char SYS_DB_FILE[] = "system.db";
 
-// Êý¾ÝÀàÐÍ
+// data types
 enum class DataType : uint32_t { INT = 0, VARCHAR = 1, DOUBLE = 2 };
 
-// ¼«¼ò Optional
+// minimal Optional
 template <typename T>
 class Optional {
 public:
@@ -42,12 +42,12 @@ public:
     explicit operator bool() const { return has_value_; }
     T& value() { return value_; }
     const T& value() const { return value_; }
+
 private:
     bool has_value_;
     T value_;
 };
 
-// ËùÓÐ½á¹¹Ìå¶¨Òå
 #pragma pack(push, 1)
 struct DateTime {
     uint16_t year;
@@ -107,20 +107,27 @@ struct FieldInfo {
 };
 #pragma pack(pop)
 
-// È«¾Ö±äÁ¿ÉùÃ÷
 extern std::string g_current_db;
 extern std::string g_root;
 
-// ¹¤¾ßº¯ÊýÉùÃ÷
 void trim(std::string& s);
 std::string toUpper(const std::string& s);
 std::vector<std::string> split(const std::string& s, char delim);
 std::string joinPath(const std::string& base, const std::string& name);
 
-// °²È«×Ö·û´®¸´ÖÆº¯Êý
+// Safe copy helper used across metadata structs.
 inline void safeStrncpy(char* dest, const char* src, size_t size) {
-    strncpy(dest, src, size - 1);
+    if (dest == nullptr || src == nullptr || size == 0) {
+        return;
+    }
+
+#ifdef _WIN32
+    // VS + SDLCheck treats strncpy as deprecated and turns it into build errors.
+    strncpy_s(dest, size, src, _TRUNCATE);
+#else
+    std::strncpy(dest, src, size - 1);
     dest[size - 1] = '\0';
+#endif
 }
 
 #endif // COMMON_H
