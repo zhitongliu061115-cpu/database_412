@@ -1,10 +1,10 @@
 #include "common.h"
 
-// ==================== 全局变量定义 ====================
+//全局变量定义
 std::string g_current_db;
 std::string g_root = "./";
 
-// ==================== 工具函数实现 ====================
+//工具函数
 void trim(std::string& s) {
     s.erase(0, s.find_first_not_of(" \t\n\r;"));
     s.erase(s.find_last_not_of(" \t\n\r;") + 1);
