@@ -1,8 +1,8 @@
-#include "DatabaseManager.h"
+ï»¿#include "DatabaseManager.h"
 #include "FileManager.h"
 
 DatabaseManager::DatabaseManager() {
-    fileManager = &FileManager::getInstance();  // ÔÚ¹¹Ôìº¯ÊıÌåÄÚ³õÊ¼»¯
+    fileManager = &FileManager::getInstance();  // åœ¨æ„é€ å‡½æ•°ä½“å†…åˆå§‹åŒ–
 }
 
 DatabaseManager& DatabaseManager::getInstance() {
@@ -16,11 +16,11 @@ void DatabaseManager::saveDBs(const std::vector<DBInfo>& dbs) {
 
 bool DatabaseManager::createDB(const std::string& name) {
     if (name.empty() || name.length() > MAX_NAME_LEN) {
-        std::cout << "Err: Ãû×ÖÎŞĞ§\n";
+        std::cout << "Err: åå­—æ— æ•ˆ\n";
         return false;
     }
     if (isDBExists(name)) {
-        std::cout << "Err: Êı¾İ¿âÒÑ´æÔÚ\n";
+        std::cout << "Err: æ•°æ®åº“å·²å­˜åœ¨\n";
         return false;
     }
 
@@ -35,7 +35,7 @@ bool DatabaseManager::createDB(const std::string& name) {
     auto dbs = getAllDBs();
     dbs.push_back(new_db);
     saveDBs(dbs);
-    std::cout << "OK: Êı¾İ¿â " << name << " ´´½¨³É¹¦\n";
+    std::cout << "OK: æ•°æ®åº“ " << name << " åˆ›å»ºæˆåŠŸ\n";
     return true;
 }
 
@@ -45,24 +45,24 @@ bool DatabaseManager::dropDB(const std::string& name) {
         return std::string(db.name) == name;
         });
     if (it == dbs.end()) {
-        std::cout << "Err: Êı¾İ¿â²»´æÔÚ\n";
+        std::cout << "Err: æ•°æ®åº“ä¸å­˜åœ¨\n";
         return false;
     }
 
     dbs.erase(it, dbs.end());
     saveDBs(dbs);
     if (g_current_db == name) g_current_db.clear();
-    std::cout << "OK: Êı¾İ¿â " << name << " É¾³ı³É¹¦\n";
+    std::cout << "OK: æ•°æ®åº“ " << name << " åˆ é™¤æˆåŠŸ\n";
     return true;
 }
 
 bool DatabaseManager::useDB(const std::string& name) {
     if (isDBExists(name)) {
         g_current_db = name;
-        std::cout << "OK: ÇĞ»»µ½ " << name << "\n";
+        std::cout << "OK: åˆ‡æ¢åˆ° " << name << "\n";
         return true;
     }
-    std::cout << "Err: Êı¾İ¿â²»´æÔÚ\n";
+    std::cout << "Err: æ•°æ®åº“ä¸å­˜åœ¨\n";
     return false;
 }
 
