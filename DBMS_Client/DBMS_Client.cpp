@@ -1,46 +1,82 @@
 #include "DBMS_Client.h"
+#include <QDateTime>
+#include <QMessageBox>
 
 DBMS_Client::DBMS_Client(QWidget* parent)
-    : QMainWindow(parent)
+    : QMainWindow(parent), tcpSocket(new QTcpSocket(this))
 {
-    ui.setupUi(this); // 这行代码会自动把你在 .ui 里画的界面加载出来
+    ui.setupUi(this);
 
-    // 1. 给 SQL 输入框一个默认提示
-    ui.sqlEditor->setText("SELECT * FROM Account;");
-
-    // 2. 初始化左侧的数据库树 (QTreeWidget)
+    ui.sqlEditor->setText("CREATE DATABASE testDB;");
     ui.treeWidget->setHeaderLabel("对象资源管理器");
+    ui.logBrowser->append("[系统] 客户端已启动。");
 
-    // 创建一个数据库节点
-    QTreeWidgetItem* dbNode = new QTreeWidgetItem(ui.treeWidget);
-    dbNode->setText(0, "Ruanko_DB"); // 模拟文档里提到的系统数据库
+    // 绑定 Socket 的信号与槽
+    connect(tcpSocket, &QTcpSocket::connected, this, &DBMS_Client::onConnected);
+    connect(tcpSocket, &QTcpSocket::readyRead, this, &DBMS_Client::onReadyRead);
+    connect(tcpSocket, &QTcpSocket::errorOccurred, this, &DBMS_Client::onError);
 
-    // 在数据库节点下创建一个表节点
-    QTreeWidgetItem* tableNode = new QTreeWidgetItem(dbNode);
-    tableNode->setText(0, "Account表");
+    // 连接按钮
+    connect(ui.btnConnect, &QPushButton::clicked, this, [=]() {
+        // 1. 检查是否已经连上了
+        if (tcpSocket->state() == QAbstractSocket::ConnectedState) {
+            ui.logBrowser->append("<font color='orange'>[提示] 已经连接到服务端，无需重复连接！您现在可以直接执行 SQL 了。</font>");
+            return; // 已经连上，直接退出函数，不再重复发起连接
+        }
 
-    // 展开树
-    ui.treeWidget->expandAll();
+        // 2. 检查是否正在努力连接中
+        if (tcpSocket->state() == QAbstractSocket::ConnectingState) {
+            ui.logBrowser->append("<font color='orange'>[提示] 正在努力连接中，请勿频繁点击...</font>");
+            return;
+        }
 
-    // 3. 初始化右下角的查询结果表格 (QTableWidget)
-    ui.resultTable->setColumnCount(3); // 设置3列
-    ui.resultTable->setHorizontalHeaderLabels(QStringList() << "ID" << "用户名" << "余额"); // 设置表头
+        // 3. 在发起新连接前，先粗暴地切断以前可能残留的“僵尸连接”或错误状态
+        tcpSocket->abort();
 
-    // 塞入两行假数据
-    ui.resultTable->setRowCount(2);
-    ui.resultTable->setItem(0, 0, new QTableWidgetItem("1"));
-    ui.resultTable->setItem(0, 1, new QTableWidgetItem("Admin"));
-    ui.resultTable->setItem(0, 2, new QTableWidgetItem("9999.00"));
+        // 4. 正式发起连接
+        ui.logBrowser->append("[网络] 尝试连接到 127.0.0.1:8080 ...");
+        tcpSocket->connectToHost("127.0.0.1", 8080);
+        });
 
-    ui.resultTable->setItem(1, 0, new QTableWidgetItem("2"));
-    ui.resultTable->setItem(1, 1, new QTableWidgetItem("TestUser"));
-    ui.resultTable->setItem(1, 2, new QTableWidgetItem("100.50"));
+    // 执行按钮
+    connect(ui.btnRun, &QPushButton::clicked, this, [=]() {
+        QString sqlText = ui.sqlEditor->toPlainText().trimmed();
+        if (sqlText.isEmpty()) return;
 
-    // 4. 初始化日志输出
-    ui.logBrowser->append("[系统] 客户端已启动...");
-    ui.logBrowser->append("[系统] 等待连接到 DBMS 服务端...");
+        if (tcpSocket->state() == QAbstractSocket::ConnectedState) {
+            // 发送给服务端 (UTF-8 编码)
+            tcpSocket->write(sqlText.toUtf8());
+            ui.logBrowser->append("<font color='white'><b>[发送]</b> " + sqlText + "</font>");
+        }
+        else {
+            QMessageBox::warning(this, "错误", "尚未连接到服务端！");
+        }
+        });
 }
 
 DBMS_Client::~DBMS_Client()
 {
+    if (tcpSocket->isOpen()) {
+        tcpSocket->close();
+    }
+}
+
+void DBMS_Client::onConnected()
+{
+    ui.logBrowser->append("<font color='yellow'>[网络] 成功连接到 DBMS 服务端！</font>");
+}
+
+void DBMS_Client::onReadyRead()
+{
+    // 读取服务端返回的数据
+    QByteArray data = tcpSocket->readAll();
+    QString response = QString::fromUtf8(data).trimmed();
+
+    // 显示在下方的日志框里
+    ui.logBrowser->append("<font color='#00ff00'>[回执] " + response + "</font>");
+}
+
+void DBMS_Client::onError(QAbstractSocket::SocketError socketError)
+{
+    ui.logBrowser->append("<font color='red'>[错误] 网络连接异常: " + tcpSocket->errorString() + "</font>");
 }
