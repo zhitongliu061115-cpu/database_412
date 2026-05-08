@@ -1,4 +1,4 @@
-#ifndef SQL_PARSER_H
+﻿#ifndef SQL_PARSER_H
 #define SQL_PARSER_H
 
 #include "common.h"

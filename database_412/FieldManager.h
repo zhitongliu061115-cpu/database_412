@@ -1,9 +1,9 @@
-#ifndef FIELD_MANAGER_H
+ï»¿#ifndef FIELD_MANAGER_H
 #define FIELD_MANAGER_H
 
 #include "common.h"
 
-class FileManager;  // Ç°ÏòÉùÃ÷
+class FileManager;  // å‰å‘å£°æ˜
 
 class FieldManager {
 public:
@@ -18,7 +18,7 @@ public:
     std::vector<FieldInfo> getFields(const std::string& tname);
 
 private:
-    FileManager* fileManager;  // ¸ÄÎªÖ¸Õë
+    FileManager* fileManager;  // æ”¹ä¸ºæŒ‡é’ˆ
     FieldManager();
     ~FieldManager() = default;
     void saveFields(const std::string& tname, const std::vector<FieldInfo>& flds);

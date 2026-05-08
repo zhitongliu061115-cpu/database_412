@@ -1,9 +1,9 @@
-#ifndef DATABASE_MANAGER_H
+ï»¿#ifndef DATABASE_MANAGER_H
 #define DATABASE_MANAGER_H
 
 #include "common.h"
 
-class FileManager;  // Ç°ÏòÉùÃ÷
+class FileManager;  // å‰å‘å£°æ˜
 
 class DatabaseManager {
 public:
@@ -21,7 +21,7 @@ public:
     std::string getDBPath(const std::string& name);
 
 private:
-    FileManager* fileManager;  // ¸ÄÎªÖ¸Õë
+    FileManager* fileManager;  // æ”¹ä¸ºæŒ‡é’ˆ
     DatabaseManager();
     ~DatabaseManager() = default;
     void saveDBs(const std::vector<DBInfo>& dbs);

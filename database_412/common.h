@@ -1,7 +1,7 @@
-#ifndef COMMON_H
+ï»¿#ifndef COMMON_H
 #define COMMON_H
 
-#define _CRT_SECURE_NO_WARNINGS  // ½â¾ö strncpy µÈº¯ÊıµÄ°²È«¾¯¸æ
+#define _CRT_SECURE_NO_WARNINGS  // è§£å†³ strncpy ç­‰å‡½æ•°çš„å®‰å…¨è­¦å‘Š
 
 #include <string>
 #include <vector>
@@ -24,15 +24,15 @@
 #define MKDIR(path) mkdir(path, 0755)
 #endif
 
-// ³£Á¿
+// å¸¸é‡
 constexpr uint32_t MAX_NAME_LEN = 128;
 constexpr uint32_t MAX_PATH_LEN = 256;
 constexpr char SYS_DB_FILE[] = "system.db";
 
-// Êı¾İÀàĞÍ
+// æ•°æ®ç±»å‹
 enum class DataType : uint32_t { INT = 0, VARCHAR = 1, DOUBLE = 2 };
 
-// ¼«¼ò Optional
+// æç®€ Optional
 template <typename T>
 class Optional {
 public:
@@ -47,7 +47,7 @@ private:
     T value_;
 };
 
-// ËùÓĞ½á¹¹Ìå¶¨Òå
+// æ‰€æœ‰ç»“æ„ä½“å®šä¹‰
 #pragma pack(push, 1)
 struct DateTime {
     uint16_t year;
@@ -107,17 +107,17 @@ struct FieldInfo {
 };
 #pragma pack(pop)
 
-// È«¾Ö±äÁ¿ÉùÃ÷
+// å…¨å±€å˜é‡å£°æ˜
 extern std::string g_current_db;
 extern std::string g_root;
 
-// ¹¤¾ßº¯ÊıÉùÃ÷
+// å·¥å…·å‡½æ•°å£°æ˜
 void trim(std::string& s);
 std::string toUpper(const std::string& s);
 std::vector<std::string> split(const std::string& s, char delim);
 std::string joinPath(const std::string& base, const std::string& name);
 
-// °²È«×Ö·û´®¸´ÖÆº¯Êı
+// å®‰å…¨å­—ç¬¦ä¸²å¤åˆ¶å‡½æ•°
 inline void safeStrncpy(char* dest, const char* src, size_t size) {
     strncpy(dest, src, size - 1);
     dest[size - 1] = '\0';
