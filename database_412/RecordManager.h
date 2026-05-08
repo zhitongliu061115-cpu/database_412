@@ -1,9 +1,9 @@
-#ifndef RECORD_MANAGER_H
+ï»¿#ifndef RECORD_MANAGER_H
 #define RECORD_MANAGER_H
 
 #include "common.h"
 
-class FileManager;  // Ç°ÏòÉùÃ÷
+class FileManager;  // å‰å‘å£°æ˜
 
 class RecordManager {
 public:
@@ -18,7 +18,7 @@ public:
     bool deleteRecord(const std::string& tname, int row);
 
 private:
-    FileManager* fileManager;  // ¸ÄÎªÖ¸Õë
+    FileManager* fileManager;  // æ”¹ä¸ºæŒ‡é’ˆ
     RecordManager();
     ~RecordManager() = default;
     std::vector<std::string> readRecs(const std::string& tname);

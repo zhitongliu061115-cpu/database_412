@@ -1,9 +1,9 @@
-#ifndef TABLE_MANAGER_H
+ï»¿#ifndef TABLE_MANAGER_H
 #define TABLE_MANAGER_H
 
 #include "common.h"
 
-class FileManager;  // Ç°ÏòÉùÃ÷
+class FileManager;  // å‰å‘å£°æ˜
 
 class TableManager {
 public:
@@ -22,7 +22,7 @@ public:
     std::string getTableDir();
 
 private:
-    FileManager* fileManager;  // ¸ÄÎªÖ¸Õë
+    FileManager* fileManager;  // æ”¹ä¸ºæŒ‡é’ˆ
     TableManager();
     ~TableManager() = default;
     void saveTables(const std::vector<TableInfo>& tables);

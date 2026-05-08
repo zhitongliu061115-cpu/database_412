@@ -1,4 +1,4 @@
-#ifndef FILE_MANAGER_H
+ï»¿#ifndef FILE_MANAGER_H
 #define FILE_MANAGER_H
 
 #include "common.h"
@@ -12,13 +12,13 @@ public:
     FileManager(const FileManager&) = delete;
     FileManager& operator=(const FileManager&) = delete;
 
-    // ÎÄ¼ş´æÔÚ¼ì²é
+    // æ–‡ä»¶å­˜åœ¨æ£€æŸ¥
     static bool fileExists(const std::string& path) {
         struct stat st;
         return stat(path.c_str(), &st) == 0;
     }
 
-    // Ğ´Èëµ¥¸ö½á¹¹Ìå
+    // å†™å…¥å•ä¸ªç»“æ„ä½“
     template<typename T>
     void writeStruct(const std::string& path, const T& data, bool append = false) {
         std::ios::openmode mode = std::ios::binary | (append ? std::ios::app : std::ios::out);
@@ -27,7 +27,7 @@ public:
         ofs.write(reinterpret_cast<const char*>(&data), sizeof(T));
     }
 
-    // ¶ÁÈ¡ËùÓĞ½á¹¹Ìå
+    // è¯»å–æ‰€æœ‰ç»“æ„ä½“
     template<typename T>
     std::vector<T> readAllStruct(const std::string& path) {
         std::vector<T> res;
@@ -41,7 +41,7 @@ public:
         return res;
     }
 
-    // ¸²¸ÇĞ´ÈëËùÓĞ½á¹¹Ìå
+    // è¦†ç›–å†™å…¥æ‰€æœ‰ç»“æ„ä½“
     template<typename T>
     void writeAllStruct(const std::string& path, const std::vector<T>& data) {
         std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
