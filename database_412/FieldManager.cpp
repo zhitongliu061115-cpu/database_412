@@ -1,9 +1,9 @@
-#include "FieldManager.h"
+ï»¿#include "FieldManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
 
 FieldManager::FieldManager() {
-    fileManager = &FileManager::getInstance();  // ÔÚ¹¹Ôìº¯ÊıÌåÄÚ³õÊ¼»¯
+    fileManager = &FileManager::getInstance();  // åœ¨æ„é€ å‡½æ•°ä½“å†…åˆå§‹åŒ–
 }
 
 FieldManager& FieldManager::getInstance() {
@@ -21,14 +21,14 @@ void FieldManager::saveFields(const std::string& tname, const std::vector<FieldI
 
 bool FieldManager::addField(const std::string& tname, const std::string& fname, const std::string& type_str) {
     if (!TableManager::getInstance().isTableExists(tname)) {
-        std::cout << "Err: ±í²»´æÔÚ\n";
+        std::cout << "Err: è¡¨ä¸å­˜åœ¨\n";
         return false;
     }
 
     auto flds = getFields(tname);
     for (const auto& f : flds) {
         if (std::string(f.name) == fname) {
-            std::cout << "Err: ×Ö¶ÎÒÑ´æÔÚ\n";
+            std::cout << "Err: å­—æ®µå·²å­˜åœ¨\n";
             return false;
         }
     }
@@ -57,14 +57,14 @@ bool FieldManager::addField(const std::string& tname, const std::string& fname, 
         new_f.param = 0;
     }
     else {
-        std::cout << "Err: ÀàĞÍ²»Ö§³Ö (INT, DOUBLE, VARCHAR(n))\n";
+        std::cout << "Err: ç±»å‹ä¸æ”¯æŒ (INT, DOUBLE, VARCHAR(n))\n";
         return false;
     }
 
     flds.push_back(new_f);
     saveFields(tname, flds);
 
-    // ¸üĞÂ±íĞÅÏ¢
+    // æ›´æ–°è¡¨ä¿¡æ¯
     auto tableOpt = TableManager::getInstance().getTable(tname);
     if (tableOpt.has_value()) {
         TableInfo t = tableOpt.value();
@@ -73,7 +73,7 @@ bool FieldManager::addField(const std::string& tname, const std::string& fname, 
         TableManager::getInstance().updateTable(tname, t);
     }
 
-    std::cout << "OK: ×Ö¶Î " << fname << " Ìí¼Ó³É¹¦\n";
+    std::cout << "OK: å­—æ®µ " << fname << " æ·»åŠ æˆåŠŸ\n";
     return true;
 }
 
@@ -87,7 +87,7 @@ bool FieldManager::dropField(const std::string& tname, const std::string& fname)
         }
     }
     if (idx == -1) {
-        std::cout << "Err: ×Ö¶Î²»´æÔÚ\n";
+        std::cout << "Err: å­—æ®µä¸å­˜åœ¨\n";
         return false;
     }
 
@@ -97,11 +97,11 @@ bool FieldManager::dropField(const std::string& tname, const std::string& fname)
     }
     saveFields(tname, flds);
 
-    // Çå¿Õ¼ÇÂ¼
+    // æ¸…ç©ºè®°å½•
     std::ofstream ofs(joinPath(TableManager::getInstance().getTableDir(), tname + ".rec"), std::ios::trunc);
     ofs.close();
 
-    std::cout << "OK: ×Ö¶Î " << fname << " É¾³ı³É¹¦£¨¼ÇÂ¼ÒÑÇå¿Õ£©\n";
+    std::cout << "OK: å­—æ®µ " << fname << " åˆ é™¤æˆåŠŸï¼ˆè®°å½•å·²æ¸…ç©ºï¼‰\n";
     return true;
 }
 
@@ -116,10 +116,10 @@ bool FieldManager::modifyField(const std::string& tname, const std::string& old_
         }
     }
     if (!found) {
-        std::cout << "Err: ×Ö¶Î²»´æÔÚ\n";
+        std::cout << "Err: å­—æ®µä¸å­˜åœ¨\n";
         return false;
     }
     saveFields(tname, flds);
-    std::cout << "OK: ×Ö¶ÎÃûÒÑĞŞ¸Ä\n";
+    std::cout << "OK: å­—æ®µåå·²ä¿®æ”¹\n";
     return true;
 }

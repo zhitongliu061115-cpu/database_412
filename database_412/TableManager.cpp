@@ -1,9 +1,9 @@
-#include "TableManager.h"
+ï»¿#include "TableManager.h"
 #include "DatabaseManager.h"
 #include "FileManager.h"
 
 TableManager::TableManager() {
-    fileManager = &FileManager::getInstance();  // ÔÚ¹¹Ôìº¯ÊıÌåÄÚ³õÊ¼»¯
+    fileManager = &FileManager::getInstance();  // åœ¨æ„é€ å‡½æ•°ä½“å†…åˆå§‹åŒ–
 }
 
 TableManager& TableManager::getInstance() {
@@ -25,11 +25,11 @@ void TableManager::saveTables(const std::vector<TableInfo>& tables) {
 
 bool TableManager::createTable(const std::string& name) {
     if (g_current_db.empty()) {
-        std::cout << "Err: ÇëÏÈ USE Êı¾İ¿â\n";
+        std::cout << "Err: è¯·å…ˆ USE æ•°æ®åº“\n";
         return false;
     }
     if (isTableExists(name)) {
-        std::cout << "Err: ±íÒÑ´æÔÚ\n";
+        std::cout << "Err: è¡¨å·²å­˜åœ¨\n";
         return false;
     }
 
@@ -40,19 +40,19 @@ bool TableManager::createTable(const std::string& name) {
     tables.push_back(new_t);
     saveTables(tables);
 
-    // ´´½¨¿ÕÎÄ¼ş
+    // åˆ›å»ºç©ºæ–‡ä»¶
     std::vector<FieldInfo> empty_flds;
     fileManager->writeAllStruct(joinPath(getTableDir(), name + ".fld"), empty_flds);
     std::ofstream ofs(joinPath(getTableDir(), name + ".rec"));
     ofs.close();
 
-    std::cout << "OK: ±í " << name << " ´´½¨³É¹¦\n";
+    std::cout << "OK: è¡¨ " << name << " åˆ›å»ºæˆåŠŸ\n";
     return true;
 }
 
 bool TableManager::dropTable(const std::string& name) {
     if (g_current_db.empty()) {
-        std::cout << "Err: ÇëÏÈ USE Êı¾İ¿â\n";
+        std::cout << "Err: è¯·å…ˆ USE æ•°æ®åº“\n";
         return false;
     }
     auto tables = getAllTables();
@@ -60,7 +60,7 @@ bool TableManager::dropTable(const std::string& name) {
         return std::string(t.name) == name;
         });
     if (it == tables.end()) {
-        std::cout << "Err: ±í²»´æÔÚ\n";
+        std::cout << "Err: è¡¨ä¸å­˜åœ¨\n";
         return false;
     }
 
@@ -70,7 +70,7 @@ bool TableManager::dropTable(const std::string& name) {
     std::remove(joinPath(getTableDir(), name + ".fld").c_str());
     std::remove(joinPath(getTableDir(), name + ".rec").c_str());
 
-    std::cout << "OK: ±í " << name << " É¾³ı³É¹¦\n";
+    std::cout << "OK: è¡¨ " << name << " åˆ é™¤æˆåŠŸ\n";
     return true;
 }
 
