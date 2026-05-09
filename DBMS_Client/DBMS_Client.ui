@@ -51,6 +51,13 @@
          <item>
           <layout class="QHBoxLayout" name="toolLayout">
            <item>
+            <widget class="QPushButton" name="btnExport">
+             <property name="text">
+              <string>导出csv</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="btnConnect">
              <property name="text">
               <string>连接服务端</string>
@@ -87,7 +94,7 @@
               <string>background-color: #4CAF50; color: white; border-radius: 4px;</string>
              </property>
              <property name="text">
-              <string>▶ 执行 SQL (F5)</string>
+              <string>▶ 执行 SQL</string>
              </property>
             </widget>
            </item>
