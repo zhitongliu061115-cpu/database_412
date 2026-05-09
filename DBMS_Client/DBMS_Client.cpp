@@ -69,7 +69,8 @@ DBMS_Client::DBMS_Client(QWidget* parent)
         "   border-image: url(:/icons/Tree.jpg); " 
         "   border: none; "                        
         "   background-color: transparent; "       
-        "   padding: 0px; "                        
+        "   padding: 0px; "
+        "   color: #333333; "
         "}"
         "QTreeWidget::item { "
         "   background: transparent; "
@@ -85,6 +86,7 @@ DBMS_Client::DBMS_Client(QWidget* parent)
         "QTextEdit { "
         "   border-image: url(:/icons/sql.png); "
         "   background-color: rgba(255, 255, 255, 0.85); "
+        "   color: #333333; "
         "}"
     );
 
@@ -92,7 +94,8 @@ DBMS_Client::DBMS_Client(QWidget* parent)
         "QTableWidget { "
         "   border-image: url(:/icons/sql.png);"
         "   border: none; "                               
-        "   background-color: rgba(255, 255, 255, 0.85);" 
+        "   background-color: rgba(255, 255, 255, 0.85);"
+        "   color: #333333; "
         "}"
         "QHeaderView { "
         "   background-color: transparent; "
