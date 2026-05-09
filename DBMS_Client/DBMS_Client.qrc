@@ -1,4 +1,6 @@
 <RCC>
-    <qresource prefix="DBMS_Client">
+    <qresource prefix="/icons">
+        <file>Tree.jpg</file>
+        <file>sql.png</file>
     </qresource>
 </RCC>
