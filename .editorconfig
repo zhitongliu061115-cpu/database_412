@@ -1,0 +1,13 @@
+# top-most EditorConfig file
+root = true
+
+# 匹配所有文件
+[*]
+# 强制使用 UTF-8 编码
+charset = utf-8
+# 强制使用 LF 作为换行符 (对 Git 更友好)
+end_of_line = lf
+# 确保文件末尾有一个空行
+insert_final_newline = true
+# 删除行尾多余的空格
+trim_trailing_whitespace = true
