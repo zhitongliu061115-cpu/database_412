@@ -3,6 +3,7 @@
 #include "TableManager.h"
 #include "FieldManager.h"
 #include "RecordManager.h"
+#include "Transaction.h"
 #include <set>
 #include <cctype>
 #include <stdexcept>
@@ -88,7 +89,8 @@ private:
             "CREATE","DATABASE","DROP","USE","TABLE","ALTER","ADD","COLUMN","MODIFY",
             "INSERT","INTO","VALUES","SELECT","FROM","WHERE","UPDATE","SET","DELETE",
             "AND","OR","NOT","ORDER","BY","GROUP","ASC","DESC","COUNT","SUM","AVG",
-            "MIN","MAX","HAVING","EXIT","QUIT","HELP","NULL","PRIMARY","KEY"
+            "MIN","MAX","HAVING","EXIT","QUIT","HELP","NULL","PRIMARY","KEY",
+            "BEGIN","COMMIT","ROLLBACK"
         };
         return kw.count(s) > 0;
     }
@@ -111,12 +113,12 @@ public:
     Token expectIdent() {
         Token t = peek();
         if (t.type == TOK_IDENT || t.type == TOK_KEYWORD) { idx++; return t; }
-        throw std::runtime_error("期望标识符");
+        throw std::runtime_error("期望标识符 ");
     }
     Token expectStringOrIdent() {
         Token t = peek();
         if (t.type == TOK_STRING || t.type == TOK_NUMBER || t.type == TOK_IDENT) { idx++; return t; }
-        throw std::runtime_error("期望值");
+        throw std::runtime_error("期望值 ");
     }
 };
 
@@ -162,7 +164,7 @@ static std::unique_ptr<ExprNode> parsePrimary(Parser& p, const std::vector<Field
         p.consume(t.type);
         return ExprNode::makeLeafConst(val, dt);
     }
-    throw std::runtime_error("表达式解析错误");
+    throw std::runtime_error("表达式解析错误 ");
 }
 
 static std::unique_ptr<ExprNode> parseComparison(Parser& p, const std::vector<FieldInfo>& fields) {
@@ -265,14 +267,29 @@ static void parseInsert(Parser& p) {
     p.match(TOK_LPAREN);
     while (true) { Token v = p.expectStringOrIdent(); vals.push_back(v.text); if (!p.match(TOK_COMMA)) break; }
     p.match(TOK_RPAREN);
-    if (cols.empty()) RecordManager::getInstance().insertRecord(tname.text, vals);
-    else RecordManager::getInstance().insertRecord(tname.text, cols, vals);
+
+    // 根据是否有活动事务选择使用事务版本
+    if (TransactionManager::getInstance().hasActiveTransaction()) {
+        if (cols.empty()) {
+            RecordManager::getInstance().insertRecordTx(tname.text, vals);
+        }
+        else {
+            RecordManager::getInstance().insertRecordTx(tname.text, cols, vals);
+        }
+    }
+    else {
+        if (cols.empty()) {
+            RecordManager::getInstance().insertRecord(tname.text, vals);
+        }
+        else {
+            RecordManager::getInstance().insertRecord(tname.text, cols, vals);
+        }
+    }
 }
 
 static void parseSelect(Parser& p) {
     std::vector<std::string> outCols;
     if (!p.match(TOK_STAR)) {
-        // 列列表
         while (true) { Token col = p.expectIdent(); outCols.push_back(col.text); if (!p.match(TOK_COMMA)) break; }
     }
     if (!p.matchKeyword("FROM")) throw std::runtime_error("期望 FROM");
@@ -304,7 +321,7 @@ static void parseSelect(Parser& p) {
         else if (upper.find("MAX(") == 0) { aggFunc = AggFuncType::MAX; aggCol = col.substr(4, col.size() - 5); }
     }
     if (aggFunc != AggFuncType::NONE) {
-        outCols.clear(); // 聚合查询不输出原始列
+        outCols.clear();
     }
 
     // ORDER BY
@@ -333,15 +350,21 @@ static void parseUpdate(Parser& p) {
     else {
         std::cout << "Err: UPDATE 必须含 WHERE\n"; return;
     }
-    // 检查是否是 row = n 格式
+
     if (auto comp = dynamic_cast<ExprNode*>(whereCond.get())) {
-        if (comp->type == ExprNode::UNARY && comp->left->colName == "row") {
+        if (comp->type == ExprNode::UNARY && comp->left && comp->left->colName == "row") {
             int rn = std::stoi(comp->right->value);
             RecordManager::getInstance().updateRecord(tname.text, setCol.text, setVal.text, rn);
             return;
         }
     }
-    RecordManager::getInstance().updateRecords(tname.text, setCol.text, setVal.text, whereCond.get());
+
+    if (TransactionManager::getInstance().hasActiveTransaction()) {
+        RecordManager::getInstance().updateRecordsTx(tname.text, setCol.text, setVal.text, whereCond.get());
+    }
+    else {
+        RecordManager::getInstance().updateRecords(tname.text, setCol.text, setVal.text, whereCond.get());
+    }
 }
 
 static void parseDelete(Parser& p) {
@@ -356,23 +379,59 @@ static void parseDelete(Parser& p) {
         RecordManager::getInstance().deleteRecord(tname.text, -1);
         return;
     }
+
     if (auto comp = dynamic_cast<ExprNode*>(whereCond.get())) {
-        if (comp->type == ExprNode::UNARY && comp->left->colName == "row") {
+        if (comp->type == ExprNode::UNARY && comp->left && comp->left->colName == "row") {
             int rn = std::stoi(comp->right->value);
             RecordManager::getInstance().deleteRecord(tname.text, rn);
             return;
         }
     }
-    RecordManager::getInstance().deleteRecords(tname.text, whereCond.get());
+
+    if (TransactionManager::getInstance().hasActiveTransaction()) {
+        RecordManager::getInstance().deleteRecordsTx(tname.text, whereCond.get());
+    }
+    else {
+        RecordManager::getInstance().deleteRecords(tname.text, whereCond.get());
+    }
 }
 
-// ---------- SQLParser 接口 ----------
-SQLParser& SQLParser::getInstance() { static SQLParser ins; return ins; }
+static void parseBegin(Parser& p) {
+    TransactionManager::getInstance().beginTransaction();
+}
+
+static void parseCommit(Parser& p) {
+    if (!TransactionManager::getInstance().hasActiveTransaction()) {
+        std::cout << "Err: 没有活动的事务\n";
+        return;
+    }
+    TransactionManager::getInstance().commitTransaction(
+        TransactionManager::getInstance().getCurrentTxId());
+}
+
+static void parseRollback(Parser& p) {
+    if (!TransactionManager::getInstance().hasActiveTransaction()) {
+        std::cout << "Err: 没有活动的事务\n";
+        return;
+    }
+    TransactionManager::getInstance().rollbackTransaction(
+        TransactionManager::getInstance().getCurrentTxId());
+}
+SQLParser& SQLParser::getInstance() {
+    static SQLParser instance;
+    return instance;
+}
 
 void SQLParser::showHelp() {
     std::cout << "\n支持的命令:\n"
-        << "  CREATE DATABASE <name>\n  DROP DATABASE <name>\n  USE <db>\n"
-        << "  CREATE TABLE <name>\n  DROP TABLE <name>\n"
+        << "  BEGIN                          - 开始一个新事务\n"
+        << "  COMMIT                         - 提交当前事务\n"
+        << "  ROLLBACK                       - 回滚当前事务\n"
+        << "  CREATE DATABASE <name>\n"
+        << "  DROP DATABASE <name>\n"
+        << "  USE <db>\n"
+        << "  CREATE TABLE <name>\n"
+        << "  DROP TABLE <name>\n"
         << "  ALTER TABLE <t> ADD [COLUMN] <col> <type> [NOT NULL]\n"
         << "  ALTER TABLE <t> DROP [COLUMN] <col>\n"
         << "  ALTER TABLE <t> MODIFY [COLUMN] <old> <new>\n"
@@ -382,7 +441,11 @@ void SQLParser::showHelp() {
         << "  DELETE FROM <t> [WHERE expr]\n"
         << "  expr: comparison (AND/OR comparison)*\n"
         << "  comparison: col <op> val | ( expr )\n"
-        << "  op: =, <, >, <=, >=, !=, <>\n\n";
+        << "  op: =, <, >, <=, >=, !=, <>\n\n"
+        << "事务命令说明:\n"
+        << "  BEGIN    - 开始事务后，后续的 INSERT/UPDATE/DELETE 操作会被记录\n"
+        << "  COMMIT   - 提交事务，将操作永久保存\n"
+        << "  ROLLBACK - 回滚事务，撤销事务中的所有操作\n\n";
 }
 
 void SQLParser::execute(const std::string& sql) {
@@ -394,17 +457,64 @@ void SQLParser::execute(const std::string& sql) {
         Token first = p.peek();
         if (first.type == TOK_END) return;
         std::string cmd = first.text;
-        if (cmd == "CREATE") { p.consume(TOK_KEYWORD); parseCreate(p); }
-        else if (cmd == "DROP") { p.consume(TOK_KEYWORD); parseDrop(p); }
-        else if (cmd == "USE") { p.consume(TOK_KEYWORD); DatabaseManager::getInstance().useDB(p.expectIdent().text); }
-        else if (cmd == "ALTER") { p.consume(TOK_KEYWORD); parseAlter(p); }
-        else if (cmd == "INSERT") { p.consume(TOK_KEYWORD); parseInsert(p); }
-        else if (cmd == "SELECT") { p.consume(TOK_KEYWORD); parseSelect(p); }
-        else if (cmd == "UPDATE") { p.consume(TOK_KEYWORD); parseUpdate(p); }
-        else if (cmd == "DELETE") { p.consume(TOK_KEYWORD); parseDelete(p); }
-        else if (cmd == "EXIT" || cmd == "QUIT") { std::cout << "再见！\n"; exit(0); }
-        else if (cmd == "HELP") showHelp();
-        else std::cout << "未知命令\n";
+
+        if (cmd == "BEGIN") {
+            p.consume(TOK_KEYWORD);
+            parseBegin(p);
+        }
+        else if (cmd == "COMMIT") {
+            p.consume(TOK_KEYWORD);
+            parseCommit(p);
+        }
+        else if (cmd == "ROLLBACK") {
+            p.consume(TOK_KEYWORD);
+            parseRollback(p);
+        }
+        else if (cmd == "CREATE") {
+            p.consume(TOK_KEYWORD);
+            parseCreate(p);
+        }
+        else if (cmd == "DROP") {
+            p.consume(TOK_KEYWORD);
+            parseDrop(p);
+        }
+        else if (cmd == "USE") {
+            p.consume(TOK_KEYWORD);
+            DatabaseManager::getInstance().useDB(p.expectIdent().text);
+        }
+        else if (cmd == "ALTER") {
+            p.consume(TOK_KEYWORD);
+            parseAlter(p);
+        }
+        else if (cmd == "INSERT") {
+            p.consume(TOK_KEYWORD);
+            parseInsert(p);
+        }
+        else if (cmd == "SELECT") {
+            p.consume(TOK_KEYWORD);
+            parseSelect(p);
+        }
+        else if (cmd == "UPDATE") {
+            p.consume(TOK_KEYWORD);
+            parseUpdate(p);
+        }
+        else if (cmd == "DELETE") {
+            p.consume(TOK_KEYWORD);
+            parseDelete(p);
+        }
+        else if (cmd == "EXIT" || cmd == "QUIT") {
+            std::cout << "再见！\n";
+            exit(0);
+        }
+        else if (cmd == "HELP") {
+            showHelp();
+        }
+       
+        else {
+            std::cout << "未知命令\n";
+        }
     }
-    catch (const std::exception& e) { std::cout << "执行错误: " << e.what() << std::endl; }
+    catch (const std::exception& e) {
+        std::cout << "执行错误: " << e.what() << std::endl;
+    }
 }
