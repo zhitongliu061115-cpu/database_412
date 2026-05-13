@@ -2,6 +2,7 @@
 #include "FieldManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
+#include "Transaction.h"
 #include <algorithm>    // std::sort, std::min_element, std::max_element
 #include <numeric>      // std::accumulate
 #include <functional>   // std::greater
@@ -130,7 +131,7 @@ bool RecordManager::selectRecords(const std::string& tname) {
             std::cout << cols[i] << (i == cols.size() - 1 ? "\n" : "\t");
         }
     }
-    std::cout << "共 " << recs.size() << " 条记录\n\n";
+    std::cout << " 共 " << recs.size() << " 条记录\n\n";
     return true;
 }
 
@@ -331,7 +332,7 @@ bool RecordManager::selectRecords(const std::string& tname,
             }
         }
     }
-    std::cout << "共 " << filtered.size() << " 条记录\n\n";
+    std::cout << "共\ " << filtered.size() << " 条记录\n\n";
     return true;
 }
 
@@ -436,7 +437,7 @@ bool RecordManager::updateRecords(const std::string& tname,
     auto t = TableManager::getInstance().getTable(tname).value();
     t.mtime.init();
     TableManager::getInstance().updateTable(tname, t);
-    std::cout << "OK: 更新 " << updated << " 行\n";
+    std::cout << "OK: 更新 " << updated << " 行\n\n";
     return true;
 }
 
@@ -460,7 +461,7 @@ bool RecordManager::deleteRecords(const std::string& tname, const ExprNode* wher
     t.record_count = static_cast<int32_t>(newRecs.size());
     t.mtime.init();
     TableManager::getInstance().updateTable(tname, t);
-    std::cout << "OK: 删除 " << deleted << " 行\n";
+    std::cout << "OK: 删除 " << deleted << " 行\n\n";
     return true;
 }
 
@@ -540,4 +541,181 @@ double RecordManager::getColumnValue(const std::string& val, DataType type) {
 
 std::string RecordManager::getColumnString(const std::string& val) {
     return val;
+}
+
+// ==================== 事务相关方法 ====================
+
+bool RecordManager::insertRecordTx(const std::string& tname, const std::vector<std::string>& values) {
+    auto flds = FieldManager::getInstance().getFields(tname);
+    if (values.size() != flds.size()) {
+        std::cout << "Err: 值数量不匹配 (需要\n" << flds.size() << ")\n";
+        return false;
+    }
+
+    // 类型校验 & NOT NULL
+    for (size_t i = 0; i < flds.size(); i++) {
+        std::string v = unquote(values[i]);
+        if (v.empty() && (flds[i].flags & FIELD_FLAG_NOT_NULL)) {
+            std::cout << "Err: 字段 " << flds[i].name << " 不能为空\n";
+            return false;
+        }
+        if (!v.empty() && !validateValue(v, flds[i].type, flds[i].param)) {
+            std::cout << "Err: 字段 " << flds[i].name << " 值类型不匹配\n";
+            return false;
+        }
+    }
+
+    std::string line;
+    for (size_t i = 0; i < values.size(); i++) {
+        std::string v = unquote(values[i]);
+        line += v + (i == values.size() - 1 ? "" : "|");
+    }
+
+    auto recs = readRecs(tname);
+    int newRowIndex = static_cast<int>(recs.size());
+    recs.push_back(line);
+    writeRecs(tname, recs);
+
+    // 记录到事务日志
+    std::vector<std::string> processedValues = values;
+    for (auto& v : processedValues) {
+        v = unquote(v);
+    }
+    TransactionManager::getInstance().logInsertToCurrent(tname, processedValues, newRowIndex);
+
+    // 更新表记录数
+    auto tableOpt = TableManager::getInstance().getTable(tname);
+    if (tableOpt.has_value()) {
+        TableInfo t = tableOpt.value();
+        t.record_count = static_cast<int32_t>(recs.size());
+        t.mtime.init();
+        TableManager::getInstance().updateTable(tname, t);
+    }
+
+    std::cout << "OK: 插入成功 (事务 #" << TransactionManager::getInstance().getCurrentTxId() << ")\n";
+    return true;
+}
+
+bool RecordManager::insertRecordTx(const std::string& tname,
+    const std::vector<std::string>& cols,
+    const std::vector<std::string>& values) {
+    if (cols.empty()) return insertRecordTx(tname, values);
+
+    auto flds = FieldManager::getInstance().getFields(tname);
+    if (cols.size() != values.size() || cols.size() > flds.size()) {
+        std::cout << "Err: 列/值数量不匹配\n";
+        return false;
+    }
+
+    // 构建完整一行
+    std::vector<std::string> row(flds.size(), "");
+    for (size_t i = 0; i < cols.size(); i++) {
+        bool found = false;
+        for (size_t j = 0; j < flds.size(); j++) {
+            if (std::string(flds[j].name) == cols[i]) {
+                std::string v = unquote(values[i]);
+                if (v.empty() && (flds[j].flags & FIELD_FLAG_NOT_NULL)) {
+                    std::cout << "Err: 字段 " << cols[i] << " 不能为空\n";
+                    return false;
+                }
+                if (!v.empty() && !validateValue(v, flds[j].type, flds[j].param)) {
+                    std::cout << "Err: 字段 " << cols[i] << " 值类型不匹配\n";
+                    return false;
+                }
+                row[j] = v;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            std::cout << "Err: 列 " << cols[i] << " 不存在\n";
+            return false;
+        }
+    }
+    return insertRecordTx(tname, row);
+}
+
+bool RecordManager::updateRecordsTx(const std::string& tname,
+    const std::string& setCol, const std::string& setVal,
+    const ExprNode* whereCond) {
+
+    auto flds = FieldManager::getInstance().getFields(tname);
+    int setIdx = -1;
+    for (size_t i = 0; i < flds.size(); i++) {
+        if (std::string(flds[i].name) == setCol) {
+            setIdx = static_cast<int>(i);
+            break;
+        }
+    }
+    if (setIdx == -1) {
+        std::cout << "Err: SET 列不存在\n";
+        return false;
+    }
+
+    std::string val = unquote(setVal);
+    if (!val.empty() && !validateValue(val, flds[setIdx].type, flds[setIdx].param)) {
+        std::cout << "Err: 更新值类型不匹配\n";
+        return false;
+    }
+
+    auto recs = readRecs(tname);
+    int updated = 0;
+
+    for (size_t i = 0; i < recs.size(); i++) {
+        auto rowCols = split(recs[i], '|');
+        if (!whereCond || evaluateExpr(whereCond, flds, rowCols)) {
+            // 记录旧值到事务日志
+            TransactionManager::getInstance().logUpdateToCurrent(tname, rowCols, rowCols, static_cast<int>(i));
+
+            // 更新值
+            rowCols[setIdx] = val;
+            std::string newLine;
+            for (size_t j = 0; j < rowCols.size(); j++) {
+                newLine += rowCols[j] + (j == rowCols.size() - 1 ? "" : "|");
+            }
+            recs[i] = newLine;
+            updated++;
+        }
+    }
+
+    writeRecs(tname, recs);
+
+    auto t = TableManager::getInstance().getTable(tname).value();
+    t.mtime.init();
+    TableManager::getInstance().updateTable(tname, t);
+
+    std::cout << "OK: 更新 " << updated << " 行 (事务 #"
+        << TransactionManager::getInstance().getCurrentTxId() << ")\n";
+    return true;
+}
+
+bool RecordManager::deleteRecordsTx(const std::string& tname, const ExprNode* whereCond) {
+    auto flds = FieldManager::getInstance().getFields(tname);
+    auto recs = readRecs(tname);
+
+    std::vector<std::string> newRecs;
+    std::vector<int> deletedIndices;
+
+    for (size_t i = 0; i < recs.size(); i++) {
+        auto rowCols = split(recs[i], '|');
+        if (!whereCond || evaluateExpr(whereCond, flds, rowCols)) {
+            // 记录删除的行到事务日志
+            TransactionManager::getInstance().logDeleteToCurrent(tname, rowCols, static_cast<int>(i));
+            deletedIndices.push_back(static_cast<int>(i));
+        }
+        else {
+            newRecs.push_back(recs[i]);
+        }
+    }
+
+    writeRecs(tname, newRecs);
+
+    auto t = TableManager::getInstance().getTable(tname).value();
+    t.record_count = static_cast<int32_t>(newRecs.size());
+    t.mtime.init();
+    TableManager::getInstance().updateTable(tname, t);
+
+    std::cout << "OK: 删除 " << deletedIndices.size() << "行 (事务 #"
+        << TransactionManager::getInstance().getCurrentTxId() << ")\n";
+    return true;
 }
