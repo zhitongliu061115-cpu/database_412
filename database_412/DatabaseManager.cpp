@@ -1,4 +1,4 @@
-﻿#include "DatabaseManager.h"
+#include "DatabaseManager.h"
 #include "FileManager.h"
 
 DatabaseManager::DatabaseManager() {
@@ -16,11 +16,11 @@ void DatabaseManager::saveDBs(const std::vector<DBInfo>& dbs) {
 
 bool DatabaseManager::createDB(const std::string& name) {
     if (name.empty() || name.length() > MAX_NAME_LEN) {
-        std::cout << "Err: 名字无效\n";
+        std::cout << "Err: 名字无效\n\n";
         return false;
     }
     if (isDBExists(name)) {
-        std::cout << "Err: 数据库已存在\n";
+        std::cout << "Err: 数据库已存在\n\n";
         return false;
     }
 
@@ -45,7 +45,7 @@ bool DatabaseManager::dropDB(const std::string& name) {
         return std::string(db.name) == name;
         });
     if (it == dbs.end()) {
-        std::cout << "Err: 数据库不存在\n";
+        std::cout << "Err: 数据库不存在\n\n";
         return false;
     }
 
@@ -62,7 +62,7 @@ bool DatabaseManager::useDB(const std::string& name) {
         std::cout << "OK: 切换到 " << name << "\n";
         return true;
     }
-    std::cout << "Err: 数据库不存在\n";
+    std::cout << "Err: 数据库不存在\n\n";
     return false;
 }
 

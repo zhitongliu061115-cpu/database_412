@@ -37,12 +37,23 @@ public:
         const ExprNode* whereCond);
     bool deleteRecords(const std::string& tname, const ExprNode* whereCond);
 
+    // 事务相关方法 
+    std::vector<std::string> readRecs(const std::string& tname);
+    void writeRecs(const std::string& tname, const std::vector<std::string>& recs);
+
+    // 带事务的插入/更新/删除
+    bool insertRecordTx(const std::string& tname, const std::vector<std::string>& values);
+    bool insertRecordTx(const std::string& tname,
+        const std::vector<std::string>& cols,
+        const std::vector<std::string>& values);
+    bool updateRecordsTx(const std::string& tname, const std::string& setCol, const std::string& setVal,
+        const ExprNode* whereCond);
+    bool deleteRecordsTx(const std::string& tname, const ExprNode* whereCond);
+
 private:
     FileManager* fileManager;
     RecordManager();
     ~RecordManager() = default;
-    std::vector<std::string> readRecs(const std::string& tname);
-    void writeRecs(const std::string& tname, const std::vector<std::string>& recs);
 
     // 内部辅助
     static bool evaluateExpr(const ExprNode* node, const std::vector<FieldInfo>& fields,

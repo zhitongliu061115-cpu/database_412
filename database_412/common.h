@@ -155,6 +155,9 @@ struct FieldInfo {
 };
 #pragma pack(pop)
 
+// 前向声明
+class TransactionManager;
+
 // 全局变量声明
 extern std::string g_current_db;
 extern std::string g_root;
