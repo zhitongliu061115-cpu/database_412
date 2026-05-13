@@ -127,6 +127,7 @@
     <ClCompile Include="DatabaseManager.cpp" />
     <ClCompile Include="FieldManager.cpp" />
     <ClCompile Include="FileManager.cpp" />
+    <ClCompile Include="LockManager.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="RecordManager.cpp" />
     <ClCompile Include="SQLParser.cpp" />
@@ -138,6 +139,7 @@
     <ClInclude Include="DatabaseManager.h" />
     <ClInclude Include="FieldManager.h" />
     <ClInclude Include="FileManager.h" />
+    <ClInclude Include="LockManager.h" />
     <ClInclude Include="RecordManager.h" />
     <ClInclude Include="SQLParser.h" />
     <ClInclude Include="TableManager.h" />
