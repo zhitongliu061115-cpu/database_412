@@ -1,7 +1,6 @@
 #include "FieldManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
-#include "Transaction.h"
 
 FieldManager::FieldManager() { fileManager = &FileManager::getInstance(); }
 FieldManager& FieldManager::getInstance() {
