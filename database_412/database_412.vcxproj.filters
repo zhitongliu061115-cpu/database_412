@@ -42,9 +42,6 @@
     <ClCompile Include="Transaction.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="LockManager.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h">
@@ -69,9 +66,6 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Transaction.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="LockManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
