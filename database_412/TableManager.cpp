@@ -1,4 +1,4 @@
-﻿#include "TableManager.h"
+#include "TableManager.h"
 #include "DatabaseManager.h"
 #include "FileManager.h"
 
