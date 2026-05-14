@@ -7,6 +7,7 @@ class FileManager;  // 前向声明
 
 class DatabaseManager {
 public:
+    static const std::string& defaultDBName();
     static DatabaseManager& getInstance();
 
     DatabaseManager(const DatabaseManager&) = delete;
@@ -15,6 +16,7 @@ public:
     bool createDB(const std::string& name);
     bool dropDB(const std::string& name);
     bool useDB(const std::string& name);
+    bool ensureDefaultDB();
     bool isDBExists(const std::string& name);
     Optional<DBInfo> getDB(const std::string& name);
     std::vector<DBInfo> getAllDBs();
