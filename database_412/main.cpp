@@ -1,6 +1,6 @@
 ﻿#include "common.h"
 #include "SQLParser.h"
-#include "Transaction.h"
+#include "SecurityManager.h"
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <sstream>
@@ -43,6 +43,8 @@ int main() {
     std::cout << "==============================\n\n";
 
     MKDIR("data");
+    SecurityManager::getInstance().initialize();
+    SQLParser& parser = SQLParser::getInstance();
 
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {

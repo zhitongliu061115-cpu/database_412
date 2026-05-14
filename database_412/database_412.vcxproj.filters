@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="docs">
+      <UniqueIdentifier>{a9e944aa-3543-4318-ba84-763d5d6cb274}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -42,7 +45,7 @@
     <ClCompile Include="Transaction.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="LockManager.cpp">
+    <ClCompile Include="SecurityManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
@@ -71,8 +74,16 @@
     <ClInclude Include="Transaction.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="LockManager.h">
+    <ClInclude Include="SecurityManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\docs\安全管理SQL语句清单.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="..\docs\安全管理开发说明.md">
+      <Filter>docs</Filter>
+    </None>
   </ItemGroup>
 </Project>

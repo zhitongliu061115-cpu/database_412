@@ -1,5 +1,6 @@
 #include "DatabaseManager.h"
 #include "FileManager.h"
+#include "SecurityManager.h"
 
 DatabaseManager::DatabaseManager() {
     fileManager = &FileManager::getInstance();  // 在构造函数体内初始化
@@ -15,6 +16,7 @@ void DatabaseManager::saveDBs(const std::vector<DBInfo>& dbs) {
 }
 
 bool DatabaseManager::createDB(const std::string& name) {
+    if (!SecurityManager::getInstance().requireAdmin()) return false;
     if (name.empty() || name.length() > MAX_NAME_LEN) {
         std::cout << "Err: 名字无效\n\n";
         return false;
@@ -40,6 +42,7 @@ bool DatabaseManager::createDB(const std::string& name) {
 }
 
 bool DatabaseManager::dropDB(const std::string& name) {
+    if (!SecurityManager::getInstance().requireAdmin()) return false;
     auto dbs = getAllDBs();
     auto it = std::remove_if(dbs.begin(), dbs.end(), [&](const DBInfo& db) {
         return std::string(db.name) == name;
@@ -57,6 +60,7 @@ bool DatabaseManager::dropDB(const std::string& name) {
 }
 
 bool DatabaseManager::useDB(const std::string& name) {
+    if (!SecurityManager::getInstance().requireLogin()) return false;
     if (isDBExists(name)) {
         g_current_db = name;
         std::cout << "OK: 切换到 " << name << "\n";

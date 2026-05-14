@@ -1,187 +1,270 @@
 #include "SQLParser.h"
+
 #include "DatabaseManager.h"
-#include "TableManager.h"
 #include "FieldManager.h"
 #include "RecordManager.h"
+#include "SecurityManager.h"
+#include "TableManager.h"
 #include "Transaction.h"
-#include <set>
-#include <cctype>
-#include <stdexcept>
-#include <memory>
 
-// ==================== 词法分析 ====================
+#include <cctype>
+#include <memory>
+#include <set>
+#include <stdexcept>
+
 enum TokenType {
     TOK_KEYWORD, TOK_IDENT, TOK_STRING, TOK_NUMBER,
     TOK_LPAREN, TOK_RPAREN, TOK_COMMA, TOK_EQUAL,
     TOK_STAR, TOK_SEMICOLON, TOK_LT, TOK_GT, TOK_LE, TOK_GE, TOK_NE, TOK_END
 };
 
-struct Token { TokenType type; std::string text; };
+struct Token {
+    TokenType type;
+    std::string text;
+};
 
 class Tokenizer {
-    std::string sql; size_t pos;
 public:
-    Tokenizer(const std::string& s) : sql(s), pos(0) { trim(sql); }
+    explicit Tokenizer(const std::string& s) : sql(s), pos(0) {
+        trim(sql);
+    }
+
     std::vector<Token> tokenize() {
         std::vector<Token> tokens;
         while (pos < sql.size()) {
             skipSpaces();
             if (pos >= sql.size()) break;
-            char ch = sql[pos];
-            if (ch == '(') { tokens.push_back({ TOK_LPAREN,"(" }); pos++; }
-            else if (ch == ')') { tokens.push_back({ TOK_RPAREN,")" }); pos++; }
-            else if (ch == ',') { tokens.push_back({ TOK_COMMA,"," }); pos++; }
-            else if (ch == '=') { tokens.push_back({ TOK_EQUAL,"=" }); pos++; }
-            else if (ch == '*') { tokens.push_back({ TOK_STAR,"*" }); pos++; }
-            else if (ch == ';') { tokens.push_back({ TOK_SEMICOLON,";" }); pos++; }
+
+            const char ch = sql[pos];
+            if (ch == '(') {
+                tokens.push_back({ TOK_LPAREN, "(" });
+                ++pos;
+            }
+            else if (ch == ')') {
+                tokens.push_back({ TOK_RPAREN, ")" });
+                ++pos;
+            }
+            else if (ch == ',') {
+                tokens.push_back({ TOK_COMMA, "," });
+                ++pos;
+            }
+            else if (ch == '=') {
+                tokens.push_back({ TOK_EQUAL, "=" });
+                ++pos;
+            }
+            else if (ch == '*') {
+                tokens.push_back({ TOK_STAR, "*" });
+                ++pos;
+            }
+            else if (ch == ';') {
+                tokens.push_back({ TOK_SEMICOLON, ";" });
+                ++pos;
+            }
             else if (ch == '<') {
-                if (pos + 1 < sql.size() && sql[pos + 1] == '=') { tokens.push_back({ TOK_LE,"<=" }); pos += 2; }
-                else if (pos + 1 < sql.size() && sql[pos + 1] == '>') { tokens.push_back({ TOK_NE,"<>" }); pos += 2; }
-                else { tokens.push_back({ TOK_LT,"<" }); pos++; }
+                if (pos + 1 < sql.size() && sql[pos + 1] == '=') {
+                    tokens.push_back({ TOK_LE, "<=" });
+                    pos += 2;
+                }
+                else if (pos + 1 < sql.size() && sql[pos + 1] == '>') {
+                    tokens.push_back({ TOK_NE, "<>" });
+                    pos += 2;
+                }
+                else {
+                    tokens.push_back({ TOK_LT, "<" });
+                    ++pos;
+                }
             }
             else if (ch == '>') {
-                if (pos + 1 < sql.size() && sql[pos + 1] == '=') { tokens.push_back({ TOK_GE,">=" }); pos += 2; }
-                else { tokens.push_back({ TOK_GT,">" }); pos++; }
+                if (pos + 1 < sql.size() && sql[pos + 1] == '=') {
+                    tokens.push_back({ TOK_GE, ">=" });
+                    pos += 2;
+                }
+                else {
+                    tokens.push_back({ TOK_GT, ">" });
+                    ++pos;
+                }
             }
             else if (ch == '!') {
-                if (pos + 1 < sql.size() && sql[pos + 1] == '=') { tokens.push_back({ TOK_NE,"!=" }); pos += 2; }
-                else { tokens.push_back({ TOK_IDENT,"!" }); pos++; }
+                if (pos + 1 < sql.size() && sql[pos + 1] == '=') {
+                    tokens.push_back({ TOK_NE, "!=" });
+                    pos += 2;
+                }
+                else {
+                    tokens.push_back({ TOK_IDENT, "!" });
+                    ++pos;
+                }
             }
-            else if (ch == '\'' || ch == '"') { tokens.push_back({ TOK_STRING, readQuoted(ch) }); }
-            else if (isdigit(ch) || (ch == '-' && pos + 1 < sql.size() && isdigit(sql[pos + 1]))) {
+            else if (ch == '\'' || ch == '"') {
+                tokens.push_back({ TOK_STRING, readQuoted(ch) });
+            }
+            else if (isdigit(static_cast<unsigned char>(ch)) ||
+                (ch == '-' && pos + 1 < sql.size() && isdigit(static_cast<unsigned char>(sql[pos + 1])))) {
                 tokens.push_back({ TOK_NUMBER, readNumber() });
             }
             else {
-                std::string word = readIdentifier();
-                std::string upper = toUpper(word);
+                const std::string word = readIdentifier();
+                const std::string upper = toUpper(word);
                 if (isKeyword(upper)) tokens.push_back({ TOK_KEYWORD, upper });
                 else tokens.push_back({ TOK_IDENT, word });
             }
         }
-        tokens.push_back({ TOK_END,"" });
+        tokens.push_back({ TOK_END, "" });
         return tokens;
     }
+
 private:
-    void skipSpaces() { while (pos < sql.size() && isspace(sql[pos])) pos++; }
-    std::string readQuoted(char quote) {
-        size_t start = ++pos;
-        while (pos < sql.size() && sql[pos] != quote) pos++;
-        std::string val = sql.substr(start, pos - start);
-        if (pos < sql.size()) pos++; return val;
+    void skipSpaces() {
+        while (pos < sql.size() && isspace(static_cast<unsigned char>(sql[pos]))) ++pos;
     }
+
+    std::string readQuoted(char quote) {
+        const size_t start = ++pos;
+        while (pos < sql.size() && sql[pos] != quote) ++pos;
+        const std::string value = sql.substr(start, pos - start);
+        if (pos < sql.size()) ++pos;
+        return value;
+    }
+
     std::string readNumber() {
-        size_t start = pos;
-        if (sql[pos] == '-') pos++;
-        while (pos < sql.size() && (isdigit(sql[pos]) || sql[pos] == '.')) pos++;
+        const size_t start = pos;
+        if (sql[pos] == '-') ++pos;
+        while (pos < sql.size() &&
+            (isdigit(static_cast<unsigned char>(sql[pos])) || sql[pos] == '.')) {
+            ++pos;
+        }
         return sql.substr(start, pos - start);
     }
+
     std::string readIdentifier() {
-        size_t start = pos;
-        while (pos < sql.size() && !isspace(sql[pos]) &&
+        const size_t start = pos;
+        while (pos < sql.size() && !isspace(static_cast<unsigned char>(sql[pos])) &&
             sql[pos] != '(' && sql[pos] != ')' && sql[pos] != ',' &&
             sql[pos] != '=' && sql[pos] != ';' && sql[pos] != '*' &&
-            sql[pos] != '\'' && sql[pos] != '"' && sql[pos] != '<' && sql[pos] != '>' && sql[pos] != '!')
-            pos++;
+            sql[pos] != '\'' && sql[pos] != '"' && sql[pos] != '<' &&
+            sql[pos] != '>' && sql[pos] != '!') {
+            ++pos;
+        }
         return sql.substr(start, pos - start);
     }
+
     bool isKeyword(const std::string& s) {
-        static const std::set<std::string> kw = {
-            "CREATE","DATABASE","DROP","USE","TABLE","ALTER","ADD","COLUMN","MODIFY",
-            "INSERT","INTO","VALUES","SELECT","FROM","WHERE","UPDATE","SET","DELETE",
-            "AND","OR","NOT","ORDER","BY","GROUP","ASC","DESC","COUNT","SUM","AVG",
-            "MIN","MAX","HAVING","EXIT","QUIT","HELP","NULL","PRIMARY","KEY",
-            "BEGIN","COMMIT","ROLLBACK"
+        static const std::set<std::string> keywords = {
+            "CREATE", "DATABASE", "DROP", "USE", "TABLE", "ALTER", "ADD", "COLUMN", "MODIFY",
+            "INSERT", "INTO", "VALUES", "SELECT", "FROM", "WHERE", "UPDATE", "SET", "DELETE",
+            "AND", "OR", "NOT", "ORDER", "BY", "GROUP", "ASC", "DESC", "COUNT", "SUM", "AVG",
+            "MIN", "MAX", "HAVING", "EXIT", "QUIT", "HELP", "NULL", "PRIMARY", "KEY",
+            "BEGIN", "COMMIT", "ROLLBACK", "USER", "IDENTIFIED", "LOGIN", "LOGOUT",
+            "GRANT", "REVOKE", "ON", "TO", "FROM", "SHOW", "USERS", "GRANTS", "FOR", "ALL"
         };
-        return kw.count(s) > 0;
+        return keywords.count(s) > 0;
     }
+
+    std::string sql;
+    size_t pos;
 };
 
-// ==================== 语法分析辅助 ====================
 class Parser {
-    std::vector<Token> tokens; size_t idx;
 public:
-    Parser(const std::vector<Token>& t) : tokens(t), idx(0) {}
-    Token peek() { return idx < tokens.size() ? tokens[idx] : Token{ TOK_END,"" }; }
-    Token consume(TokenType exp) {
-        Token t = peek();
-        if (t.type != exp) throw std::runtime_error("语法错误"); idx++; return t;
+    explicit Parser(const std::vector<Token>& t) : tokens(t), idx(0) {}
+
+    Token peek() const {
+        return idx < tokens.size() ? tokens[idx] : Token{ TOK_END, "" };
     }
-    bool match(TokenType t) { if (peek().type == t) { idx++; return true; } return false; }
-    bool matchKeyword(const std::string& k) {
-        if (peek().type == TOK_KEYWORD && peek().text == k) { idx++; return true; } return false;
+
+    Token consume(TokenType expected) {
+        const Token t = peek();
+        if (t.type != expected) throw std::runtime_error("syntax error");
+        ++idx;
+        return t;
     }
+
+    bool match(TokenType t) {
+        if (peek().type == t) {
+            ++idx;
+            return true;
+        }
+        return false;
+    }
+
+    bool matchKeyword(const std::string& keyword) {
+        if (peek().type == TOK_KEYWORD && peek().text == keyword) {
+            ++idx;
+            return true;
+        }
+        return false;
+    }
+
     Token expectIdent() {
-        Token t = peek();
-        if (t.type == TOK_IDENT || t.type == TOK_KEYWORD) { idx++; return t; }
-        throw std::runtime_error("期望标识符 ");
+        const Token t = peek();
+        if (t.type == TOK_IDENT || t.type == TOK_KEYWORD) {
+            ++idx;
+            return t;
+        }
+        throw std::runtime_error("expect identifier");
     }
+
     Token expectStringOrIdent() {
-        Token t = peek();
-        if (t.type == TOK_STRING || t.type == TOK_NUMBER || t.type == TOK_IDENT) { idx++; return t; }
-        throw std::runtime_error("期望值 ");
+        const Token t = peek();
+        if (t.type == TOK_STRING || t.type == TOK_NUMBER || t.type == TOK_IDENT) {
+            ++idx;
+            return t;
+        }
+        throw std::runtime_error("expect value");
     }
+
+private:
+    std::vector<Token> tokens;
+    size_t idx;
 };
 
-// 前向声明
 static std::unique_ptr<ExprNode> parseExpr(Parser& p, const std::vector<FieldInfo>& fields);
 static std::unique_ptr<ExprNode> parseAndExpr(Parser& p, const std::vector<FieldInfo>& fields);
 static std::unique_ptr<ExprNode> parseComparison(Parser& p, const std::vector<FieldInfo>& fields);
 static std::unique_ptr<ExprNode> parsePrimary(Parser& p, const std::vector<FieldInfo>& fields);
 
-// 获取字段类型辅助
 static DataType getFieldType(const std::string& colName, const std::vector<FieldInfo>& fields) {
-    for (const auto& f : fields) if (f.name == colName) return f.type;
+    for (const auto& field : fields) {
+        if (std::string(field.name) == colName) return field.type;
+    }
     return DataType::VARCHAR;
 }
 
-// -------- 表达式解析 --------
 static std::unique_ptr<ExprNode> parsePrimary(Parser& p, const std::vector<FieldInfo>& fields) {
     if (p.match(TOK_LPAREN)) {
         auto node = parseExpr(p, fields);
         p.consume(TOK_RPAREN);
         return node;
     }
-    Token t = p.peek();
+
+    const Token t = p.peek();
     if (t.type == TOK_IDENT || t.type == TOK_KEYWORD) {
-        // 可能是列名或布尔字面量（如 NOT NULL 暂时不处理）
-        // 判断是否是列名：检查是否在fields中
-        std::string name = t.text;
         p.consume(t.type);
-        // 如果后跟操作符，则是列引用
-        if (p.peek().type == TOK_EQUAL || p.peek().type == TOK_LT || p.peek().type == TOK_GT ||
-            p.peek().type == TOK_LE || p.peek().type == TOK_GE || p.peek().type == TOK_NE) {
-            return ExprNode::makeLeafCol(name, getFieldType(name, fields));
-        }
-        else {
-            // 可能是布尔常量？暂不支持，回退为列引用
-            return ExprNode::makeLeafCol(name, getFieldType(name, fields));
-        }
+        return ExprNode::makeLeafCol(t.text, getFieldType(t.text, fields));
     }
-    else if (t.type == TOK_STRING || t.type == TOK_NUMBER) {
-        std::string val = t.text;
-        DataType dt = DataType::VARCHAR;
-        if (t.type == TOK_NUMBER) dt = (val.find('.') != std::string::npos) ? DataType::DOUBLE : DataType::INT;
+    if (t.type == TOK_STRING || t.type == TOK_NUMBER) {
+        DataType type = DataType::VARCHAR;
+        if (t.type == TOK_NUMBER) {
+            type = (t.text.find('.') != std::string::npos) ? DataType::DOUBLE : DataType::INT;
+        }
         p.consume(t.type);
-        return ExprNode::makeLeafConst(val, dt);
+        return ExprNode::makeLeafConst(t.text, type);
     }
-    throw std::runtime_error("表达式解析错误 ");
+
+    throw std::runtime_error("bad expression");
 }
 
 static std::unique_ptr<ExprNode> parseComparison(Parser& p, const std::vector<FieldInfo>& fields) {
     auto left = parsePrimary(p, fields);
     CompOp op = CompOp::EQ;
+
     if (p.match(TOK_EQUAL)) op = CompOp::EQ;
     else if (p.match(TOK_LT)) op = CompOp::LT;
     else if (p.match(TOK_GT)) op = CompOp::GT;
     else if (p.match(TOK_LE)) op = CompOp::LE;
     else if (p.match(TOK_GE)) op = CompOp::GE;
     else if (p.match(TOK_NE)) op = CompOp::NE;
-    else {
-        // 没有比较运算符，可能是个单独的列或常量（用于布尔？）暂不支持，返回左节点作为真值？我们直接要求where子句必须是比较
-        // 这里简单处理：如果左节点是列，返回一个等于自身的比较（永远真），否则报错
-        // 但为了支持`WHERE col`这种不标准的，我们拒绝。
-        throw std::runtime_error("WHERE 需要比较表达式 (例: col = val)");
-    }
+    else throw std::runtime_error("WHERE needs comparison");
+
     auto right = parsePrimary(p, fields);
     return ExprNode::makeComp(op, std::move(left), std::move(right));
 }
@@ -204,105 +287,118 @@ static std::unique_ptr<ExprNode> parseExpr(Parser& p, const std::vector<FieldInf
     return left;
 }
 
-// ---------- DDL / DML 解析 ----------
-
 static void parseCreate(Parser& p) {
     if (p.matchKeyword("DATABASE")) {
-        Token name = p.expectIdent();
-        DatabaseManager::getInstance().createDB(name.text);
+        DatabaseManager::getInstance().createDB(p.expectIdent().text);
     }
     else if (p.matchKeyword("TABLE")) {
-        Token name = p.expectIdent();
-        TableManager::getInstance().createTable(name.text);
+        TableManager::getInstance().createTable(p.expectIdent().text);
     }
-    else std::cout << "Err: 未知的 CREATE 类型\n";
+    else {
+        std::cout << "Err: unknown CREATE type\n";
+    }
 }
 
 static void parseDrop(Parser& p) {
-    if (p.matchKeyword("DATABASE")) { Token name = p.expectIdent(); DatabaseManager::getInstance().dropDB(name.text); }
-    else if (p.matchKeyword("TABLE")) { Token name = p.expectIdent(); TableManager::getInstance().dropTable(name.text); }
-    else std::cout << "Err: 未知的 DROP 类型\n";
+    if (p.matchKeyword("DATABASE")) {
+        DatabaseManager::getInstance().dropDB(p.expectIdent().text);
+    }
+    else if (p.matchKeyword("TABLE")) {
+        TableManager::getInstance().dropTable(p.expectIdent().text);
+    }
+    else {
+        std::cout << "Err: unknown DROP type\n";
+    }
 }
 
 static void parseAlter(Parser& p) {
-    if (!p.matchKeyword("TABLE")) throw std::runtime_error("期望 TABLE");
-    Token tname = p.expectIdent();
-    std::string action = p.expectIdent().text;
+    if (!p.matchKeyword("TABLE")) throw std::runtime_error("expect TABLE");
+    const Token tname = p.expectIdent();
+    const std::string action = p.expectIdent().text;
+
     if (action == "ADD") {
         p.matchKeyword("COLUMN");
-        Token col = p.expectIdent();
+        const Token col = p.expectIdent();
         std::string type = p.expectIdent().text;
-        if (p.match(TOK_LPAREN)) { std::string param = p.expectStringOrIdent().text; p.consume(TOK_RPAREN); type += "(" + param + ")"; }
-        bool notNull = false, pk = false;
+        if (p.match(TOK_LPAREN)) {
+            const std::string param = p.expectStringOrIdent().text;
+            p.consume(TOK_RPAREN);
+            type += "(" + param + ")";
+        }
+
+        bool notNull = false;
+        bool primaryKey = false;
         while (true) {
             if (p.matchKeyword("NOT") && p.matchKeyword("NULL")) notNull = true;
-            else if (p.matchKeyword("PRIMARY") && p.matchKeyword("KEY")) pk = true;
+            else if (p.matchKeyword("PRIMARY") && p.matchKeyword("KEY")) primaryKey = true;
             else break;
         }
-        FieldManager::getInstance().addField(tname.text, col.text, type, notNull, pk);
+        FieldManager::getInstance().addField(tname.text, col.text, type, notNull, primaryKey);
     }
     else if (action == "DROP") {
         p.matchKeyword("COLUMN");
-        Token col = p.expectIdent();
-        FieldManager::getInstance().dropField(tname.text, col.text);
+        FieldManager::getInstance().dropField(tname.text, p.expectIdent().text);
     }
     else if (action == "MODIFY") {
         p.matchKeyword("COLUMN");
-        Token oldName = p.expectIdent();
-        Token newName = p.expectIdent();
+        const Token oldName = p.expectIdent();
+        const Token newName = p.expectIdent();
         FieldManager::getInstance().modifyField(tname.text, oldName.text, newName.text);
     }
-    else std::cout << "Err: 不支持 ALTER 操作\n";
+    else {
+        std::cout << "Err: unsupported ALTER action\n";
+    }
 }
 
 static void parseInsert(Parser& p) {
-    if (!p.matchKeyword("INTO")) throw std::runtime_error("期望 INTO");
-    Token tname = p.expectIdent();
-    std::vector<std::string> cols, vals;
+    if (!p.matchKeyword("INTO")) throw std::runtime_error("expect INTO");
+    const Token tname = p.expectIdent();
+
+    std::vector<std::string> cols;
+    std::vector<std::string> vals;
     if (p.match(TOK_LPAREN)) {
-        while (true) { Token col = p.expectIdent(); cols.push_back(col.text); if (!p.match(TOK_COMMA)) break; }
+        while (true) {
+            cols.push_back(p.expectIdent().text);
+            if (!p.match(TOK_COMMA)) break;
+        }
         p.consume(TOK_RPAREN);
     }
-    if (!p.matchKeyword("VALUES")) throw std::runtime_error("期望 VALUES");
+
+    if (!p.matchKeyword("VALUES")) throw std::runtime_error("expect VALUES");
     p.match(TOK_LPAREN);
-    while (true) { Token v = p.expectStringOrIdent(); vals.push_back(v.text); if (!p.match(TOK_COMMA)) break; }
+    while (true) {
+        vals.push_back(p.expectStringOrIdent().text);
+        if (!p.match(TOK_COMMA)) break;
+    }
     p.match(TOK_RPAREN);
 
-    // 根据是否有活动事务选择使用事务版本
     if (TransactionManager::getInstance().hasActiveTransaction()) {
-        if (cols.empty()) {
-            RecordManager::getInstance().insertRecordTx(tname.text, vals);
-        }
-        else {
-            RecordManager::getInstance().insertRecordTx(tname.text, cols, vals);
-        }
+        if (cols.empty()) RecordManager::getInstance().insertRecordTx(tname.text, vals);
+        else RecordManager::getInstance().insertRecordTx(tname.text, cols, vals);
     }
     else {
-        if (cols.empty()) {
-            RecordManager::getInstance().insertRecord(tname.text, vals);
-        }
-        else {
-            RecordManager::getInstance().insertRecord(tname.text, cols, vals);
-        }
+        if (cols.empty()) RecordManager::getInstance().insertRecord(tname.text, vals);
+        else RecordManager::getInstance().insertRecord(tname.text, cols, vals);
     }
 }
 
 static void parseSelect(Parser& p) {
     std::vector<std::string> outCols;
     if (!p.match(TOK_STAR)) {
-        while (true) { Token col = p.expectIdent(); outCols.push_back(col.text); if (!p.match(TOK_COMMA)) break; }
+        while (true) {
+            outCols.push_back(p.expectIdent().text);
+            if (!p.match(TOK_COMMA)) break;
+        }
     }
-    if (!p.matchKeyword("FROM")) throw std::runtime_error("期望 FROM");
-    Token tname = p.expectIdent();
+    if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
+    const Token tname = p.expectIdent();
 
-    // WHERE
     std::unique_ptr<ExprNode> whereCond;
     if (p.matchKeyword("WHERE")) {
-        auto fields = FieldManager::getInstance().getFields(tname.text);
+        const auto fields = FieldManager::getInstance().getFields(tname.text);
         whereCond = parseExpr(p, fields);
     }
 
-    // GROUP BY
     std::string groupByCol;
     AggFuncType aggFunc = AggFuncType::NONE;
     std::string aggCol;
@@ -310,53 +406,69 @@ static void parseSelect(Parser& p) {
         groupByCol = p.expectIdent().text;
     }
 
-    // 聚合函数可能出现在 SELECT 列表中，这里简化处理：只支持单个聚合函数且放在列列表里
-    // 我们检查outCols中是否有聚合函数调用，如 COUNT(col)
     for (auto& col : outCols) {
-        std::string upper = toUpper(col);
-        if (upper.find("COUNT(") == 0) { aggFunc = AggFuncType::COUNT; aggCol = col.substr(6, col.size() - 7); }
-        else if (upper.find("SUM(") == 0) { aggFunc = AggFuncType::SUM; aggCol = col.substr(4, col.size() - 5); }
-        else if (upper.find("AVG(") == 0) { aggFunc = AggFuncType::AVG; aggCol = col.substr(4, col.size() - 5); }
-        else if (upper.find("MIN(") == 0) { aggFunc = AggFuncType::MIN; aggCol = col.substr(4, col.size() - 5); }
-        else if (upper.find("MAX(") == 0) { aggFunc = AggFuncType::MAX; aggCol = col.substr(4, col.size() - 5); }
+        const std::string upper = toUpper(col);
+        if (upper.find("COUNT(") == 0) {
+            aggFunc = AggFuncType::COUNT;
+            aggCol = col.substr(6, col.size() - 7);
+        }
+        else if (upper.find("SUM(") == 0) {
+            aggFunc = AggFuncType::SUM;
+            aggCol = col.substr(4, col.size() - 5);
+        }
+        else if (upper.find("AVG(") == 0) {
+            aggFunc = AggFuncType::AVG;
+            aggCol = col.substr(4, col.size() - 5);
+        }
+        else if (upper.find("MIN(") == 0) {
+            aggFunc = AggFuncType::MIN;
+            aggCol = col.substr(4, col.size() - 5);
+        }
+        else if (upper.find("MAX(") == 0) {
+            aggFunc = AggFuncType::MAX;
+            aggCol = col.substr(4, col.size() - 5);
+        }
     }
-    if (aggFunc != AggFuncType::NONE) {
-        outCols.clear();
-    }
+    if (aggFunc != AggFuncType::NONE) outCols.clear();
 
-    // ORDER BY
-    std::string orderByCol; bool orderAsc = true;
+    std::string orderByCol;
+    bool orderAsc = true;
     if (p.matchKeyword("ORDER") && p.matchKeyword("BY")) {
         orderByCol = p.expectIdent().text;
         if (p.matchKeyword("DESC")) orderAsc = false;
         else p.matchKeyword("ASC");
     }
 
-    RecordManager::getInstance().selectRecords(tname.text, outCols, whereCond.get(),
-        orderByCol, orderAsc, groupByCol, aggFunc, aggCol);
+    RecordManager::getInstance().selectRecords(
+        tname.text, outCols, whereCond.get(), orderByCol, orderAsc, groupByCol, aggFunc, aggCol);
 }
 
 static void parseUpdate(Parser& p) {
-    Token tname = p.expectIdent();
-    if (!p.matchKeyword("SET")) throw std::runtime_error("期望 SET");
-    Token setCol = p.expectIdent();
+    const Token tname = p.expectIdent();
+    if (!p.matchKeyword("SET")) throw std::runtime_error("expect SET");
+    const Token setCol = p.expectIdent();
     p.consume(TOK_EQUAL);
-    Token setVal = p.expectStringOrIdent();
+    const Token setVal = p.expectStringOrIdent();
+
     std::unique_ptr<ExprNode> whereCond;
     if (p.matchKeyword("WHERE")) {
-        auto fields = FieldManager::getInstance().getFields(tname.text);
+        const auto fields = FieldManager::getInstance().getFields(tname.text);
         whereCond = parseExpr(p, fields);
     }
     else {
-        std::cout << "Err: UPDATE 必须含 WHERE\n"; return;
+        std::cout << "Err: UPDATE must have WHERE\n";
+        return;
     }
 
-    if (auto comp = dynamic_cast<ExprNode*>(whereCond.get())) {
-        if (comp->type == ExprNode::UNARY && comp->left && comp->left->colName == "row") {
-            int rn = std::stoi(comp->right->value);
-            RecordManager::getInstance().updateRecord(tname.text, setCol.text, setVal.text, rn);
-            return;
-        }
+    if (whereCond &&
+        whereCond->type == ExprNode::UNARY &&
+        whereCond->left && whereCond->right &&
+        whereCond->left->type == ExprNode::LEAF &&
+        whereCond->right->type == ExprNode::LEAF &&
+        whereCond->left->colName == "row") {
+        const int row = std::stoi(whereCond->right->value);
+        RecordManager::getInstance().updateRecord(tname.text, setCol.text, setVal.text, row);
+        return;
     }
 
     if (TransactionManager::getInstance().hasActiveTransaction()) {
@@ -368,11 +480,12 @@ static void parseUpdate(Parser& p) {
 }
 
 static void parseDelete(Parser& p) {
-    if (!p.matchKeyword("FROM")) throw std::runtime_error("期望 FROM");
-    Token tname = p.expectIdent();
+    if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
+    const Token tname = p.expectIdent();
+
     std::unique_ptr<ExprNode> whereCond;
     if (p.matchKeyword("WHERE")) {
-        auto fields = FieldManager::getInstance().getFields(tname.text);
+        const auto fields = FieldManager::getInstance().getFields(tname.text);
         whereCond = parseExpr(p, fields);
     }
     else {
@@ -380,12 +493,15 @@ static void parseDelete(Parser& p) {
         return;
     }
 
-    if (auto comp = dynamic_cast<ExprNode*>(whereCond.get())) {
-        if (comp->type == ExprNode::UNARY && comp->left && comp->left->colName == "row") {
-            int rn = std::stoi(comp->right->value);
-            RecordManager::getInstance().deleteRecord(tname.text, rn);
-            return;
-        }
+    if (whereCond &&
+        whereCond->type == ExprNode::UNARY &&
+        whereCond->left && whereCond->right &&
+        whereCond->left->type == ExprNode::LEAF &&
+        whereCond->right->type == ExprNode::LEAF &&
+        whereCond->left->colName == "row") {
+        const int row = std::stoi(whereCond->right->value);
+        RecordManager::getInstance().deleteRecord(tname.text, row);
+        return;
     }
 
     if (TransactionManager::getInstance().hasActiveTransaction()) {
@@ -396,37 +512,112 @@ static void parseDelete(Parser& p) {
     }
 }
 
-static void parseBegin(Parser& p) {
+static void parseBegin(Parser&) {
     TransactionManager::getInstance().beginTransaction();
 }
 
-static void parseCommit(Parser& p) {
+static void parseCommit(Parser&) {
     if (!TransactionManager::getInstance().hasActiveTransaction()) {
-        std::cout << "Err: 没有活动的事务\n";
+        std::cout << "Err: no active transaction\n";
         return;
     }
-    TransactionManager::getInstance().commitTransaction(
-        TransactionManager::getInstance().getCurrentTxId());
+    TransactionManager::getInstance().commitTransaction(TransactionManager::getInstance().getCurrentTxId());
 }
 
-static void parseRollback(Parser& p) {
+static void parseRollback(Parser&) {
     if (!TransactionManager::getInstance().hasActiveTransaction()) {
-        std::cout << "Err: 没有活动的事务\n";
+        std::cout << "Err: no active transaction\n";
         return;
     }
-    TransactionManager::getInstance().rollbackTransaction(
-        TransactionManager::getInstance().getCurrentTxId());
+    TransactionManager::getInstance().rollbackTransaction(TransactionManager::getInstance().getCurrentTxId());
 }
+
+static uint32_t parsePrivilegeList(Parser& p) {
+    uint32_t mask = 0;
+    while (true) {
+        const Token privilege = p.expectIdent();
+        uint32_t current = 0;
+        if (!SecurityManager::privilegeFromName(privilege.text, current)) {
+            throw std::runtime_error("unknown privilege");
+        }
+        mask |= current;
+        if (!p.match(TOK_COMMA)) break;
+    }
+    return mask;
+}
+
+static void parseCreateUser(Parser& p) {
+    if (!SecurityManager::getInstance().requireAdmin()) return;
+    const Token username = p.expectIdent();
+    if (!p.matchKeyword("IDENTIFIED") || !p.matchKeyword("BY")) {
+        throw std::runtime_error("expect IDENTIFIED BY");
+    }
+    const Token password = p.expectStringOrIdent();
+    SecurityManager::getInstance().createUser(username.text, password.text, false);
+}
+
+static void parseLogin(Parser& p) {
+    const Token username = p.expectIdent();
+    const Token password = p.expectStringOrIdent();
+    SecurityManager::getInstance().login(username.text, password.text);
+}
+
+static void parseGrant(Parser& p) {
+    if (!SecurityManager::getInstance().requireAdmin()) return;
+    const uint32_t mask = parsePrivilegeList(p);
+    if (!p.matchKeyword("ON")) throw std::runtime_error("expect ON");
+    const Token table = p.expectIdent();
+    if (!p.matchKeyword("TO")) throw std::runtime_error("expect TO");
+    const Token username = p.expectIdent();
+    if (g_current_db.empty()) {
+        std::cout << "Err: please USE a database first\n";
+        return;
+    }
+    SecurityManager::getInstance().grantPrivilege(username.text, g_current_db, table.text, mask);
+}
+
+static void parseRevoke(Parser& p) {
+    if (!SecurityManager::getInstance().requireAdmin()) return;
+    const uint32_t mask = parsePrivilegeList(p);
+    if (!p.matchKeyword("ON")) throw std::runtime_error("expect ON");
+    const Token table = p.expectIdent();
+    if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
+    const Token username = p.expectIdent();
+    if (g_current_db.empty()) {
+        std::cout << "Err: please USE a database first\n";
+        return;
+    }
+    SecurityManager::getInstance().revokePrivilege(username.text, g_current_db, table.text, mask);
+}
+
+static void parseShow(Parser& p) {
+    if (p.matchKeyword("USERS")) {
+        SecurityManager::getInstance().showUsers();
+        return;
+    }
+    if (p.matchKeyword("GRANTS")) {
+        if (!p.matchKeyword("FOR")) throw std::runtime_error("expect FOR");
+        SecurityManager::getInstance().showGrants(p.expectIdent().text);
+        return;
+    }
+    throw std::runtime_error("unknown SHOW command");
+}
+
 SQLParser& SQLParser::getInstance() {
     static SQLParser instance;
     return instance;
 }
 
 void SQLParser::showHelp() {
-    std::cout << "\n支持的命令:\n"
-        << "  BEGIN                          - 开始一个新事务\n"
-        << "  COMMIT                         - 提交当前事务\n"
-        << "  ROLLBACK                       - 回滚当前事务\n"
+    std::cout << "\nSupported commands:\n"
+        << "  LOGIN <user> <password>\n"
+        << "  LOGOUT\n"
+        << "  CREATE USER <user> IDENTIFIED BY <password>\n"
+        << "  DROP USER <user>\n"
+        << "  GRANT <privileges> ON <table> TO <user>\n"
+        << "  REVOKE <privileges> ON <table> FROM <user>\n"
+        << "  SHOW USERS\n"
+        << "  SHOW GRANTS FOR <user>\n"
         << "  CREATE DATABASE <name>\n"
         << "  DROP DATABASE <name>\n"
         << "  USE <db>\n"
@@ -439,25 +630,24 @@ void SQLParser::showHelp() {
         << "  SELECT [cols|*] FROM <t> [WHERE expr] [GROUP BY col] [ORDER BY col [ASC|DESC]]\n"
         << "  UPDATE <t> SET col=val WHERE expr\n"
         << "  DELETE FROM <t> [WHERE expr]\n"
-        << "  expr: comparison (AND/OR comparison)*\n"
-        << "  comparison: col <op> val | ( expr )\n"
-        << "  op: =, <, >, <=, >=, !=, <>\n\n"
-        << "事务命令说明:\n"
-        << "  BEGIN    - 开始事务后，后续的 INSERT/UPDATE/DELETE 操作会被记录\n"
-        << "  COMMIT   - 提交事务，将操作永久保存\n"
-        << "  ROLLBACK - 回滚事务，撤销事务中的所有操作\n\n";
+        << "  BEGIN\n"
+        << "  COMMIT\n"
+        << "  ROLLBACK\n"
+        << "Privileges: SELECT, INSERT, UPDATE, DELETE, ALTER, DROP, ALL\n";
 }
 
-void SQLParser::execute(const std::string& sql) {
-    std::string s = sql; trim(s);
-    if (s.empty()) return;
+bool SQLParser::execute(const std::string& sql) {
+    std::string s = sql;
+    trim(s);
+    if (s.empty()) return true;
+
     try {
         Tokenizer tokenizer(s);
         Parser p(tokenizer.tokenize());
-        Token first = p.peek();
-        if (first.type == TOK_END) return;
-        std::string cmd = first.text;
+        const Token first = p.peek();
+        if (first.type == TOK_END) return true;
 
+        const std::string cmd = first.text;
         if (cmd == "BEGIN") {
             p.consume(TOK_KEYWORD);
             parseBegin(p);
@@ -472,11 +662,38 @@ void SQLParser::execute(const std::string& sql) {
         }
         else if (cmd == "CREATE") {
             p.consume(TOK_KEYWORD);
-            parseCreate(p);
+            if (p.matchKeyword("USER")) parseCreateUser(p);
+            else parseCreate(p);
         }
         else if (cmd == "DROP") {
             p.consume(TOK_KEYWORD);
-            parseDrop(p);
+            if (p.matchKeyword("USER")) {
+                if (!SecurityManager::getInstance().requireAdmin()) return false;
+                SecurityManager::getInstance().dropUser(p.expectIdent().text);
+            }
+            else {
+                parseDrop(p);
+            }
+        }
+        else if (cmd == "LOGIN") {
+            p.consume(TOK_KEYWORD);
+            parseLogin(p);
+        }
+        else if (cmd == "LOGOUT") {
+            p.consume(TOK_KEYWORD);
+            SecurityManager::getInstance().logout();
+        }
+        else if (cmd == "GRANT") {
+            p.consume(TOK_KEYWORD);
+            parseGrant(p);
+        }
+        else if (cmd == "REVOKE") {
+            p.consume(TOK_KEYWORD);
+            parseRevoke(p);
+        }
+        else if (cmd == "SHOW") {
+            p.consume(TOK_KEYWORD);
+            parseShow(p);
         }
         else if (cmd == "USE") {
             p.consume(TOK_KEYWORD);
@@ -503,18 +720,20 @@ void SQLParser::execute(const std::string& sql) {
             parseDelete(p);
         }
         else if (cmd == "EXIT" || cmd == "QUIT") {
-            std::cout << "再见！\n";
+            std::cout << "bye\n";
             exit(0);
         }
         else if (cmd == "HELP") {
             showHelp();
         }
-       
         else {
-            std::cout << "未知命令\n";
+            std::cout << "unknown command\n";
+            return false;
         }
+        return true;
     }
     catch (const std::exception& e) {
-        std::cout << "执行错误: " << e.what() << std::endl;
+        std::cout << "execute error: " << e.what() << std::endl;
+        return false;
     }
 }

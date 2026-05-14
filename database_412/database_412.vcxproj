@@ -127,9 +127,9 @@
     <ClCompile Include="DatabaseManager.cpp" />
     <ClCompile Include="FieldManager.cpp" />
     <ClCompile Include="FileManager.cpp" />
-    <ClCompile Include="LockManager.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="RecordManager.cpp" />
+    <ClCompile Include="SecurityManager.cpp" />
     <ClCompile Include="SQLParser.cpp" />
     <ClCompile Include="TableManager.cpp" />
     <ClCompile Include="Transaction.cpp" />
@@ -139,11 +139,15 @@
     <ClInclude Include="DatabaseManager.h" />
     <ClInclude Include="FieldManager.h" />
     <ClInclude Include="FileManager.h" />
-    <ClInclude Include="LockManager.h" />
     <ClInclude Include="RecordManager.h" />
+    <ClInclude Include="SecurityManager.h" />
     <ClInclude Include="SQLParser.h" />
     <ClInclude Include="TableManager.h" />
     <ClInclude Include="Transaction.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\docs\安全管理SQL语句清单.md" />
+    <None Include="..\docs\安全管理开发说明.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,6 +1,7 @@
 #include "FieldManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
+#include "SecurityManager.h"
 #include "Transaction.h"
 
 FieldManager::FieldManager() { fileManager = &FileManager::getInstance(); }
@@ -19,6 +20,7 @@ void FieldManager::saveFields(const std::string& tname, const std::vector<FieldI
 
 bool FieldManager::addField(const std::string& tname, const std::string& fname,
     const std::string& type_str, bool notNull, bool primaryKey) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_ALTER)) return false;
     if (!TableManager::getInstance().isTableExists(tname)) {
         std::cout << "Err: 表不存在\n"; return false;
     }
@@ -70,6 +72,7 @@ bool FieldManager::addField(const std::string& tname, const std::string& fname,
 }
 
 bool FieldManager::dropField(const std::string& tname, const std::string& fname) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_ALTER)) return false;
     auto flds = getFields(tname);
     int idx = -1;
     for (size_t i = 0; i < flds.size(); i++) {
@@ -86,6 +89,7 @@ bool FieldManager::dropField(const std::string& tname, const std::string& fname)
 }
 
 bool FieldManager::modifyField(const std::string& tname, const std::string& old_name, const std::string& new_name) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_ALTER)) return false;
     auto flds = getFields(tname);
     bool found = false;
     for (auto& f : flds) {
