@@ -18,6 +18,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="BackupManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -53,6 +56,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BackupManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
     <ClInclude Include="common.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -85,6 +91,12 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\docs\数据库恢复维护开发说明.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="..\docs\数据库恢复维护测试流程.md">
+      <Filter>docs</Filter>
+    </None>
     <None Include="..\docs\安全管理SQL语句清单.md">
       <Filter>docs</Filter>
     </None>

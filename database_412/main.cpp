@@ -1,4 +1,5 @@
 ﻿#include "common.h"
+#include "DatabaseManager.h"
 #include "SQLParser.h"
 #include "SecurityManager.h"
 #include <winsock2.h>
@@ -43,6 +44,7 @@ int main() {
     std::cout << "==============================\n\n";
 
     MKDIR("data");
+    DatabaseManager::getInstance().ensureDefaultDB();
     SecurityManager::getInstance().initialize();
     SQLParser& parser = SQLParser::getInstance();
 

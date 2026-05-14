@@ -123,6 +123,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="BackupManager.cpp" />
     <ClCompile Include="common.cpp" />
     <ClCompile Include="DatabaseManager.cpp" />
     <ClCompile Include="FieldManager.cpp" />
@@ -136,6 +137,7 @@
     <ClCompile Include="Transaction.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BackupManager.h" />
     <ClInclude Include="common.h" />
     <ClInclude Include="DatabaseManager.h" />
     <ClInclude Include="FieldManager.h" />
@@ -148,6 +150,8 @@
     <ClInclude Include="Transaction.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\docs\数据库恢复维护开发说明.md" />
+    <None Include="..\docs\数据库恢复维护测试流程.md" />
     <None Include="..\docs\安全管理SQL语句清单.md" />
     <None Include="..\docs\安全管理开发说明.md" />
   </ItemGroup>

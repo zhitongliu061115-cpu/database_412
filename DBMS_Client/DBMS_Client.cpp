@@ -121,7 +121,7 @@ DBMS_Client::DBMS_Client(QWidget* parent)
         "}"
     );
 
-    ui.sqlEditor->setText("CREATE DATABASE testDB;");
+    ui.sqlEditor->setText("LOGIN admin 'admin123';");
     ui.treeWidget->setHeaderLabel("对象资源管理器");
     QTreeWidgetItem* userRoot = new QTreeWidgetItem(ui.treeWidget);
     userRoot->setText(0, "👤 ZHANG_HANWEI"); 
