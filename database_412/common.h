@@ -159,7 +159,7 @@ struct FieldInfo {
 class TransactionManager;
 
 // 全局变量声明
-extern std::string g_current_db;
+extern thread_local std::string g_current_db;
 extern std::string g_root;
 
 // 工具函数
