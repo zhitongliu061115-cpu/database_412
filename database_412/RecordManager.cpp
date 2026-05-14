@@ -2,6 +2,7 @@
 #include "FieldManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
+#include "SecurityManager.h"
 #include "Transaction.h"
 #include <algorithm>    // std::sort, std::min_element, std::max_element
 #include <numeric>      // std::accumulate
@@ -38,6 +39,7 @@ void RecordManager::writeRecs(const std::string& tname, const std::vector<std::s
 
 // ==================== 插入（按顺序） ====================
 bool RecordManager::insertRecord(const std::string& tname, const std::vector<std::string>& values) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_INSERT)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     if (values.size() != flds.size()) {
         std::cout << "Err: 值数量不匹配 (需要 " << flds.size() << ")\n";
@@ -117,6 +119,7 @@ bool RecordManager::insertRecord(const std::string& tname,
 
 // ==================== 全表查询 ====================
 bool RecordManager::selectRecords(const std::string& tname) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_SELECT)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     auto recs = readRecs(tname);
 
@@ -142,6 +145,7 @@ bool RecordManager::selectRecords(const std::string& tname,
     const std::string& orderByCol, bool orderAsc,
     const std::string& groupByCol,
     AggFuncType aggFunc, const std::string& aggCol) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_SELECT)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     auto recs = readRecs(tname);
 
@@ -339,6 +343,7 @@ bool RecordManager::selectRecords(const std::string& tname,
 // ==================== 按行更新 ====================
 bool RecordManager::updateRecord(const std::string& tname, const std::string& col,
     const std::string& val, int row) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_UPDATE)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     int col_idx = -1;
     for (size_t i = 0; i < flds.size(); i++) {
@@ -375,6 +380,7 @@ bool RecordManager::updateRecord(const std::string& tname, const std::string& co
 
 // ==================== 按行删除 ====================
 bool RecordManager::deleteRecord(const std::string& tname, int row) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_DELETE)) return false;
     auto recs = readRecs(tname);
     if (row == -1) {
         recs.clear();
@@ -402,6 +408,7 @@ bool RecordManager::deleteRecord(const std::string& tname, int row) {
 bool RecordManager::updateRecords(const std::string& tname,
     const std::string& setCol, const std::string& setVal,
     const ExprNode* whereCond) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_UPDATE)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     int setIdx = -1;
     for (size_t i = 0; i < flds.size(); i++) {
@@ -443,6 +450,7 @@ bool RecordManager::updateRecords(const std::string& tname,
 
 // ==================== 条件删除 ====================
 bool RecordManager::deleteRecords(const std::string& tname, const ExprNode* whereCond) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_DELETE)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     auto recs = readRecs(tname);
     std::vector<std::string> newRecs;
@@ -546,6 +554,7 @@ std::string RecordManager::getColumnString(const std::string& val) {
 // ==================== 事务相关方法 ====================
 
 bool RecordManager::insertRecordTx(const std::string& tname, const std::vector<std::string>& values) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_INSERT)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     if (values.size() != flds.size()) {
         std::cout << "Err: 值数量不匹配 (需要\n" << flds.size() << ")\n";
@@ -638,6 +647,7 @@ bool RecordManager::insertRecordTx(const std::string& tname,
 bool RecordManager::updateRecordsTx(const std::string& tname,
     const std::string& setCol, const std::string& setVal,
     const ExprNode* whereCond) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_UPDATE)) return false;
 
     auto flds = FieldManager::getInstance().getFields(tname);
     int setIdx = -1;
@@ -690,6 +700,7 @@ bool RecordManager::updateRecordsTx(const std::string& tname,
 }
 
 bool RecordManager::deleteRecordsTx(const std::string& tname, const ExprNode* whereCond) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_DELETE)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     auto recs = readRecs(tname);
 
