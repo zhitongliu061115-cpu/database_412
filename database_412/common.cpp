@@ -1,6 +1,6 @@
 #include "common.h"
 
-std::string g_current_db;
+thread_local std::string g_current_db;
 std::string g_root = "./";
 
 void trim(std::string& s) {
