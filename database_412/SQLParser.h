@@ -10,7 +10,7 @@ public:
     SQLParser(const SQLParser&) = delete;
     SQLParser& operator=(const SQLParser&) = delete;
 
-    void execute(const std::string& sql);
+    bool execute(const std::string& sql);
 
 private:
     SQLParser() = default;

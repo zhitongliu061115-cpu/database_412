@@ -1,6 +1,7 @@
 #include "TableManager.h"
 #include "DatabaseManager.h"
 #include "FileManager.h"
+#include "SecurityManager.h"
 
 TableManager::TableManager() {
     fileManager = &FileManager::getInstance();  // 在构造函数体内初始化
@@ -24,6 +25,7 @@ void TableManager::saveTables(const std::vector<TableInfo>& tables) {
 }
 
 bool TableManager::createTable(const std::string& name) {
+    if (!SecurityManager::getInstance().requireAdmin()) return false;
     if (g_current_db.empty()) {
         std::cout << "Err: 请先 USE 数据库\n";
         return false;
@@ -51,6 +53,7 @@ bool TableManager::createTable(const std::string& name) {
 }
 
 bool TableManager::dropTable(const std::string& name) {
+    if (!SecurityManager::getInstance().requirePrivilege(g_current_db, name, PRIV_DROP)) return false;
     if (g_current_db.empty()) {
         std::cout << "Err: 请先 USE 数据库\n";
         return false;
