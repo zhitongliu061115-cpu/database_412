@@ -1,6 +1,7 @@
 #include "TableManager.h"
 #include "DatabaseManager.h"
 #include "FileManager.h"
+#include "IndexManager.h"
 #include "SecurityManager.h"
 
 TableManager::TableManager() {
@@ -70,6 +71,7 @@ bool TableManager::dropTable(const std::string& name) {
     tables.erase(it, tables.end());
     saveTables(tables);
 
+    IndexManager::getInstance().dropAllIndexes(name);
     std::remove(joinPath(getTableDir(), name + ".fld").c_str());
     std::remove(joinPath(getTableDir(), name + ".rec").c_str());
 

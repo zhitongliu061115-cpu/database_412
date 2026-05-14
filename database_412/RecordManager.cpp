@@ -1,5 +1,6 @@
 #include "RecordManager.h"
 #include "FieldManager.h"
+#include "IndexManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
 #include "SecurityManager.h"
@@ -8,6 +9,63 @@
 #include <numeric>      // std::accumulate
 #include <functional>   // std::greater
 #include <map>
+#include <set>
+
+namespace {
+struct IndexProbe {
+    std::string col;
+    std::string value;
+    CompOp op;
+};
+
+CompOp reverseCompOp(CompOp op) {
+    switch (op) {
+    case CompOp::LT: return CompOp::GT;
+    case CompOp::LE: return CompOp::GE;
+    case CompOp::GT: return CompOp::LT;
+    case CompOp::GE: return CompOp::LE;
+    default: return op;
+    }
+}
+
+bool tryBuildIndexProbe(const std::string& tname, const ExprNode* node, IndexProbe& probe) {
+    if (!node) return false;
+
+    if (node->type == ExprNode::BINARY) {
+        if (node->logic != LogicOp::AND) return false;
+        return tryBuildIndexProbe(tname, node->left.get(), probe) ||
+            tryBuildIndexProbe(tname, node->right.get(), probe);
+    }
+
+    if (node->type != ExprNode::UNARY || node->comp == CompOp::NE) return false;
+    if (!node->left || !node->right ||
+        node->left->type != ExprNode::LEAF ||
+        node->right->type != ExprNode::LEAF) {
+        return false;
+    }
+
+    const bool leftIsCol = !node->left->colName.empty();
+    const bool rightIsCol = !node->right->colName.empty();
+
+    if (leftIsCol && !rightIsCol &&
+        IndexManager::getInstance().hasIndex(tname, node->left->colName)) {
+        probe.col = node->left->colName;
+        probe.value = unquote(node->right->value);
+        probe.op = node->comp;
+        return true;
+    }
+
+    if (!leftIsCol && rightIsCol &&
+        IndexManager::getInstance().hasIndex(tname, node->right->colName)) {
+        probe.col = node->right->colName;
+        probe.value = unquote(node->left->value);
+        probe.op = reverseCompOp(node->comp);
+        return true;
+    }
+
+    return false;
+}
+}
 
 // ==================== 构造函数 & 单例 ====================
 RecordManager::RecordManager() {
@@ -34,6 +92,10 @@ void RecordManager::writeRecs(const std::string& tname, const std::vector<std::s
     std::ofstream ofs(joinPath(TableManager::getInstance().getTableDir(), tname + ".rec"), std::ios::trunc);
     for (const auto& r : recs) {
         ofs << r << "\n";
+    }
+    ofs.close();
+    if (!g_current_db.empty()) {
+        IndexManager::getInstance().rebuildAllIndexes(tname);
     }
 }
 
@@ -151,8 +213,28 @@ bool RecordManager::selectRecords(const std::string& tname,
 
     // 解析每行为 vector<string>
     std::vector<std::vector<std::string>> rows;
-    for (const auto& r : recs) {
-        rows.push_back(split(r, '|'));
+    IndexProbe probe;
+    bool usedIndex = false;
+    if (whereCond && tryBuildIndexProbe(tname, whereCond, probe)) {
+        const auto indexedRows = IndexManager::getInstance().lookup(tname, probe.col, probe.value, probe.op);
+        std::set<int> rowSet;
+        for (int row : indexedRows) {
+            if (row >= 0 && row < static_cast<int>(recs.size())) {
+                rowSet.insert(row);
+            }
+        }
+        for (size_t i = 0; i < recs.size(); ++i) {
+            if (rowSet.count(static_cast<int>(i)) != 0) {
+                rows.push_back(split(recs[i], '|'));
+            }
+        }
+        usedIndex = true;
+    }
+
+    if (!usedIndex) {
+        for (const auto& r : recs) {
+            rows.push_back(split(r, '|'));
+        }
     }
 
     // WHERE 过滤
@@ -428,7 +510,21 @@ bool RecordManager::updateRecords(const std::string& tname,
     }
     auto recs = readRecs(tname);
     int updated = 0;
-    for (size_t i = 0; i < recs.size(); i++) {
+    std::vector<size_t> candidateRows;
+    IndexProbe probe;
+    if (whereCond && tryBuildIndexProbe(tname, whereCond, probe)) {
+        const auto indexedRows = IndexManager::getInstance().lookup(tname, probe.col, probe.value, probe.op);
+        std::set<int> rowSet;
+        for (int row : indexedRows) {
+            if (row >= 0 && row < static_cast<int>(recs.size())) rowSet.insert(row);
+        }
+        for (int row : rowSet) candidateRows.push_back(static_cast<size_t>(row));
+    }
+    else {
+        for (size_t i = 0; i < recs.size(); ++i) candidateRows.push_back(i);
+    }
+
+    for (size_t i : candidateRows) {
         auto rowCols = split(recs[i], '|');
         if (!whereCond || evaluateExpr(whereCond, flds, rowCols)) {
             rowCols[setIdx] = val;
@@ -455,9 +551,22 @@ bool RecordManager::deleteRecords(const std::string& tname, const ExprNode* wher
     auto recs = readRecs(tname);
     std::vector<std::string> newRecs;
     int deleted = 0;
-    for (const auto& r : recs) {
+    std::set<int> candidateRows;
+    bool usedIndex = false;
+    IndexProbe probe;
+    if (whereCond && tryBuildIndexProbe(tname, whereCond, probe)) {
+        const auto indexedRows = IndexManager::getInstance().lookup(tname, probe.col, probe.value, probe.op);
+        for (int row : indexedRows) {
+            if (row >= 0 && row < static_cast<int>(recs.size())) candidateRows.insert(row);
+        }
+        usedIndex = true;
+    }
+
+    for (size_t i = 0; i < recs.size(); ++i) {
+        const auto& r = recs[i];
         auto rowCols = split(r, '|');
-        if (!whereCond || evaluateExpr(whereCond, flds, rowCols)) {
+        const bool shouldCheck = !usedIndex || candidateRows.count(static_cast<int>(i)) != 0;
+        if (shouldCheck && (!whereCond || evaluateExpr(whereCond, flds, rowCols))) {
             deleted++;
         }
         else {
@@ -671,7 +780,21 @@ bool RecordManager::updateRecordsTx(const std::string& tname,
     auto recs = readRecs(tname);
     int updated = 0;
 
-    for (size_t i = 0; i < recs.size(); i++) {
+    std::vector<size_t> candidateRows;
+    IndexProbe probe;
+    if (whereCond && tryBuildIndexProbe(tname, whereCond, probe)) {
+        const auto indexedRows = IndexManager::getInstance().lookup(tname, probe.col, probe.value, probe.op);
+        std::set<int> rowSet;
+        for (int row : indexedRows) {
+            if (row >= 0 && row < static_cast<int>(recs.size())) rowSet.insert(row);
+        }
+        for (int row : rowSet) candidateRows.push_back(static_cast<size_t>(row));
+    }
+    else {
+        for (size_t i = 0; i < recs.size(); ++i) candidateRows.push_back(i);
+    }
+
+    for (size_t i : candidateRows) {
         auto rowCols = split(recs[i], '|');
         if (!whereCond || evaluateExpr(whereCond, flds, rowCols)) {
             // 记录旧值到事务日志
@@ -706,10 +829,21 @@ bool RecordManager::deleteRecordsTx(const std::string& tname, const ExprNode* wh
 
     std::vector<std::string> newRecs;
     std::vector<int> deletedIndices;
+    std::set<int> candidateRows;
+    bool usedIndex = false;
+    IndexProbe probe;
+    if (whereCond && tryBuildIndexProbe(tname, whereCond, probe)) {
+        const auto indexedRows = IndexManager::getInstance().lookup(tname, probe.col, probe.value, probe.op);
+        for (int row : indexedRows) {
+            if (row >= 0 && row < static_cast<int>(recs.size())) candidateRows.insert(row);
+        }
+        usedIndex = true;
+    }
 
     for (size_t i = 0; i < recs.size(); i++) {
         auto rowCols = split(recs[i], '|');
-        if (!whereCond || evaluateExpr(whereCond, flds, rowCols)) {
+        const bool shouldCheck = !usedIndex || candidateRows.count(static_cast<int>(i)) != 0;
+        if (shouldCheck && (!whereCond || evaluateExpr(whereCond, flds, rowCols))) {
             // 记录删除的行到事务日志
             TransactionManager::getInstance().logDeleteToCurrent(tname, rowCols, static_cast<int>(i));
             deletedIndices.push_back(static_cast<int>(i));

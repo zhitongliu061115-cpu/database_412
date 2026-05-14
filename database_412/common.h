@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <functional>
+#include <memory>
 #include <set>
 #include <cmath>
 
