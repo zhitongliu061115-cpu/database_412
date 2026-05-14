@@ -2,6 +2,7 @@
 
 #include "DatabaseManager.h"
 #include "FieldManager.h"
+#include "IndexManager.h"
 #include "RecordManager.h"
 #include "SecurityManager.h"
 #include "TableManager.h"
@@ -153,6 +154,7 @@ private:
             "INSERT", "INTO", "VALUES", "SELECT", "FROM", "WHERE", "UPDATE", "SET", "DELETE",
             "AND", "OR", "NOT", "ORDER", "BY", "GROUP", "ASC", "DESC", "COUNT", "SUM", "AVG",
             "MIN", "MAX", "HAVING", "EXIT", "QUIT", "HELP", "NULL", "PRIMARY", "KEY",
+            "INDEX", "UNIQUE",
             "BEGIN", "COMMIT", "ROLLBACK", "USER", "IDENTIFIED", "LOGIN", "LOGOUT",
             "GRANT", "REVOKE", "ON", "TO", "FROM", "SHOW", "USERS", "GRANTS", "FOR", "ALL"
         };
@@ -294,6 +296,25 @@ static void parseCreate(Parser& p) {
     else if (p.matchKeyword("TABLE")) {
         TableManager::getInstance().createTable(p.expectIdent().text);
     }
+    else if (p.matchKeyword("UNIQUE")) {
+        if (!p.matchKeyword("INDEX")) throw std::runtime_error("expect INDEX");
+        const Token idxName = p.expectIdent();
+        if (!p.matchKeyword("ON")) throw std::runtime_error("expect ON");
+        const Token tname = p.expectIdent();
+        p.consume(TOK_LPAREN);
+        const Token col = p.expectIdent();
+        p.consume(TOK_RPAREN);
+        IndexManager::getInstance().createIndex(tname.text, col.text, idxName.text, true);
+    }
+    else if (p.matchKeyword("INDEX")) {
+        const Token idxName = p.expectIdent();
+        if (!p.matchKeyword("ON")) throw std::runtime_error("expect ON");
+        const Token tname = p.expectIdent();
+        p.consume(TOK_LPAREN);
+        const Token col = p.expectIdent();
+        p.consume(TOK_RPAREN);
+        IndexManager::getInstance().createIndex(tname.text, col.text, idxName.text, false);
+    }
     else {
         std::cout << "Err: unknown CREATE type\n";
     }
@@ -305,6 +326,14 @@ static void parseDrop(Parser& p) {
     }
     else if (p.matchKeyword("TABLE")) {
         TableManager::getInstance().dropTable(p.expectIdent().text);
+    }
+    else if (p.matchKeyword("INDEX")) {
+        const Token idxName = p.expectIdent();
+        std::string tname;
+        if (p.matchKeyword("ON")) {
+            tname = p.expectIdent().text;
+        }
+        IndexManager::getInstance().dropIndexByName(idxName.text, tname);
     }
     else {
         std::cout << "Err: unknown DROP type\n";
@@ -623,6 +652,8 @@ void SQLParser::showHelp() {
         << "  USE <db>\n"
         << "  CREATE TABLE <name>\n"
         << "  DROP TABLE <name>\n"
+        << "  CREATE [UNIQUE] INDEX <idx> ON <table>(<col>)\n"
+        << "  DROP INDEX <idx> [ON <table>]\n"
         << "  ALTER TABLE <t> ADD [COLUMN] <col> <type> [NOT NULL]\n"
         << "  ALTER TABLE <t> DROP [COLUMN] <col>\n"
         << "  ALTER TABLE <t> MODIFY [COLUMN] <old> <new>\n"
