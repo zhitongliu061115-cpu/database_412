@@ -86,8 +86,7 @@ void handleClient(SOCKET clientSocket) {
                     std::string username = payload.substr(5, splitPos - 5);
                     std::string sqlText = payload.substr(splitPos + 5);
 
-                    // 核心拦截：将当前工作环境切换到当前用户的隔离子文件夹中
-                    DatabaseManager::getInstance().useDB("Schema/" + username);
+                    g_current_db = "Schema/" + username;
 
                     // 让底层的解析器执行真实的 SQL
                     SQLParser::getInstance().execute(sqlText);
