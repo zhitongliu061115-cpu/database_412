@@ -9,6 +9,7 @@
 #include "SecurityManager.h"
 #include "TableManager.h"
 #include "Transaction.h"
+#include "LockManager.h"     // 新增：锁管理器头文件
 
 #include <cctype>
 #include <memory>
@@ -178,7 +179,7 @@ private:
             "INDEX", "UNIQUE",
             "BEGIN", "COMMIT", "ROLLBACK", "USER", "IDENTIFIED", "LOGIN", "LOGOUT",
             "GRANT", "REVOKE", "ON", "TO", "FROM", "SHOW", "USERS", "GRANTS", "FOR", "ALL",
-            "BACKUP", "RESTORE"
+            "BACKUP", "RESTORE", "LOCKS"     // 新增 LOCKS 关键字
         };
         return keywords.count(s) > 0;
     }
@@ -651,6 +652,11 @@ static void parseShow(Parser& p) {
         SecurityManager::getInstance().showGrants(p.expectIdent().text);
         return;
     }
+    // 新增：SHOW LOCKS 命令
+    if (p.matchKeyword("LOCKS")) {
+        LockManager::getInstance().printLocks();
+        return;
+    }
     throw std::runtime_error("unknown SHOW command");
 }
 
@@ -701,10 +707,11 @@ void SQLParser::showHelp() {
         << "  LOGOUT\n"
         << "  CREATE USER <user> IDENTIFIED BY <password>\n"
         << "  DROP USER <user>\n"
-        << "  GRANT <privileges> ON <table> TO <user>\n"
-        << "  REVOKE <privileges> ON <table> FROM <user>\n"
+        << "  GRANT <privileges> ON </td> TO <user>\n"
+        << "  REVOKE <privileges> ON <tr> FROM <user>\n"
         << "  SHOW USERS\n"
         << "  SHOW GRANTS FOR <user>\n"
+        << "  SHOW LOCKS                      -- 显示当前锁状态\n"   // 新增
         << "  BACKUP DATABASE <db> TO <file>\n"
         << "  RESTORE DATABASE <db> FROM <file>\n"
         << "  CREATE DATABASE <name>\n"
@@ -713,7 +720,7 @@ void SQLParser::showHelp() {
         << "  CREATE TABLE <name>\n"
         << "  DROP TABLE <name>\n"
         << "  CREATE [UNIQUE] INDEX <idx> ON <table>(<col>)\n"
-        << "  DROP INDEX <idx> [ON <table>]\n"
+        << "  DROP INDEX <idx> [ON </table>]\n"
         << "  ALTER TABLE <t> ADD [COLUMN] <col> <type> [NOT NULL]\n"
         << "  ALTER TABLE <t> DROP [COLUMN] <col>\n"
         << "  ALTER TABLE <t> MODIFY [COLUMN] <old> <new>\n"
@@ -862,6 +869,7 @@ bool SQLParser::execute(const std::string& sql) {
         else if (cmd == "SHOW") {
             p.consume(TOK_KEYWORD);
             parseShow(p);
+            success = true;
         }
         else if (cmd == "BACKUP") {
             p.consume(TOK_KEYWORD);
