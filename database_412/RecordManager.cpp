@@ -3,6 +3,7 @@
 #include "IndexManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
+#include "LockManager.h"
 #include "SecurityManager.h"
 #include "Transaction.h"
 #include <algorithm>    // std::sort, std::min_element, std::max_element
@@ -234,6 +235,14 @@ bool RecordManager::selectRecords(const std::string& tname,
     if (!usedIndex) {
         for (const auto& r : recs) {
             rows.push_back(split(r, '|'));
+        }
+    }
+
+    if (TransactionManager::getInstance().hasActiveTransaction()) {
+        std::string tableLock = "table:" + tname;
+        if (!TransactionManager::getInstance().acquireLock(tableLock, LockType::SHARED)) {
+            std::cout << "Err: 无法获取读锁，请重试\n";
+            return false;
         }
     }
 
@@ -664,6 +673,13 @@ std::string RecordManager::getColumnString(const std::string& val) {
 
 bool RecordManager::insertRecordTx(const std::string& tname, const std::vector<std::string>& values) {
     if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_INSERT)) return false;
+
+    // 获取表级排他锁
+    std::string tableLock = "table:" + tname;
+    if (!TransactionManager::getInstance().acquireLock(tableLock, LockType::EXCLUSIVE)) {
+        std::cout << "Err: 无法获取表锁，请重试\n";
+        return false;
+    }
     auto flds = FieldManager::getInstance().getFields(tname);
     if (values.size() != flds.size()) {
         std::cout << "Err: 值数量不匹配 (需要\n" << flds.size() << ")\n";
@@ -758,6 +774,14 @@ bool RecordManager::updateRecordsTx(const std::string& tname,
     const ExprNode* whereCond) {
     if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_UPDATE)) return false;
 
+    // 获取表级排他锁
+    std::string tableLock = "table:" + tname;
+    if (!TransactionManager::getInstance().acquireLock(tableLock, LockType::EXCLUSIVE)) {
+        std::cout << "Err: 无法获取表锁，请重试\n";
+        return false;
+    }
+
+
     auto flds = FieldManager::getInstance().getFields(tname);
     int setIdx = -1;
     for (size_t i = 0; i < flds.size(); i++) {
@@ -797,6 +821,13 @@ bool RecordManager::updateRecordsTx(const std::string& tname,
     for (size_t i : candidateRows) {
         auto rowCols = split(recs[i], '|');
         if (!whereCond || evaluateExpr(whereCond, flds, rowCols)) {
+            // 获取行级排他锁
+            std::string rowLock = "table:" + tname + ":row:" + std::to_string(i);
+            if (!TransactionManager::getInstance().acquireLock(rowLock, LockType::EXCLUSIVE)) {
+                std::cout << "Err: 无法获取行锁，请重试\n";
+                return false;
+            }
+
             // 记录旧值到事务日志
             TransactionManager::getInstance().logUpdateToCurrent(tname, rowCols, rowCols, static_cast<int>(i));
 
@@ -824,6 +855,13 @@ bool RecordManager::updateRecordsTx(const std::string& tname,
 
 bool RecordManager::deleteRecordsTx(const std::string& tname, const ExprNode* whereCond) {
     if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_DELETE)) return false;
+
+    // 获取表级排他锁
+    std::string tableLock = "table:" + tname;
+    if (!TransactionManager::getInstance().acquireLock(tableLock, LockType::EXCLUSIVE)) {
+        std::cout << "Err: 无法获取表锁，请重试\n";
+        return false;
+    }
     auto flds = FieldManager::getInstance().getFields(tname);
     auto recs = readRecs(tname);
 
@@ -844,6 +882,12 @@ bool RecordManager::deleteRecordsTx(const std::string& tname, const ExprNode* wh
         auto rowCols = split(recs[i], '|');
         const bool shouldCheck = !usedIndex || candidateRows.count(static_cast<int>(i)) != 0;
         if (shouldCheck && (!whereCond || evaluateExpr(whereCond, flds, rowCols))) {
+            // 获取行级排他锁
+            std::string rowLock = "table:" + tname + ":row:" + std::to_string(i);
+            if (!TransactionManager::getInstance().acquireLock(rowLock, LockType::EXCLUSIVE)) {
+                std::cout << "Err: 无法获取行锁，请重试\n";
+                return false;
+            }
             // 记录删除的行到事务日志
             TransactionManager::getInstance().logDeleteToCurrent(tname, rowCols, static_cast<int>(i));
             deletedIndices.push_back(static_cast<int>(i));

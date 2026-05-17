@@ -133,6 +133,7 @@
     <ClCompile Include="FieldManager.cpp" />
     <ClCompile Include="FileManager.cpp" />
     <ClCompile Include="IndexManager.cpp" />
+    <ClCompile Include="LockManager.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="RecordManager.cpp" />
     <ClCompile Include="SecurityManager.cpp" />
@@ -147,6 +148,7 @@
     <ClInclude Include="FieldManager.h" />
     <ClInclude Include="FileManager.h" />
     <ClInclude Include="IndexManager.h" />
+    <ClInclude Include="LockManager.h" />
     <ClInclude Include="RecordManager.h" />
     <ClInclude Include="SecurityManager.h" />
     <ClInclude Include="SQLParser.h" />
@@ -158,6 +160,7 @@
     <None Include="..\docs\数据库恢复维护测试流程.md" />
     <None Include="..\docs\安全管理SQL语句清单.md" />
     <None Include="..\docs\安全管理开发说明.md" />
+    <None Include="事务管理之并发控制与锁管理开发说明.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

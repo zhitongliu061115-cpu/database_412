@@ -188,7 +188,7 @@ bool DatabaseManager::useDB(const std::string& name) {
     if (!SecurityManager::getInstance().requireLogin()) return false;
     if (isDBExists(name)) {
         g_current_db = name;
-        std::cout << "OK: 切换到 " << name << "\n";
+        std::cout << "OK: 切换到|  " << name << "\n";
         return true;
     }
     std::cout << "Err: 数据库不存在\n\n";

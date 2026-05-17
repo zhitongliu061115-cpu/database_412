@@ -1,9 +1,13 @@
 #include "Transaction.h"
 #include "RecordManager.h"
+#include "LockManager.h"
 #include "FieldManager.h"
 #include "TableManager.h"
 #include "FileManager.h"
 #include <iostream>
+
+// 线程局部存储：每个线程有自己的当前事务ID
+thread_local int TransactionManager::currentTxId_ = -1;
 
 // ==================== Transaction 实现 ====================
 
@@ -61,6 +65,20 @@ void Transaction::clearOperations() {
     operations_.clear();
 }
 
+// ========== Transaction 锁相关 ==========
+
+void Transaction::addLock(const std::string& resource) {
+    locks_.insert(resource);
+}
+
+bool Transaction::hasLock(const std::string& resource) const {
+    return locks_.find(resource) != locks_.end();
+}
+
+void Transaction::clearLocks() {
+    locks_.clear();
+}
+
 // ==================== TransactionManager 实现 ====================
 
 TransactionManager& TransactionManager::getInstance() {
@@ -75,8 +93,8 @@ int TransactionManager::beginTransaction() {
     auto tx = std::make_unique<Transaction>(txId);
     tx->begin();
     transactions_[txId] = std::move(tx);
-    currentTxId_ = txId;
-    std::cout << "[事务] 开始事务\n#" << txId << "\n";
+    currentTxId_ = txId;  // 线程局部，每个线程独立
+    std::cout << "[事务] |开始事务| #" << txId << "\n";
     return txId;
 }
 
@@ -98,11 +116,14 @@ bool TransactionManager::commitTransaction(int txId) {
     // 清除事务记录（已提交，不再需要回滚信息）
     tx->clearOperations();
 
+    // 释放当前事务持有的所有锁
+    releaseAllLocks(txId);
+
     if (currentTxId_ == txId) {
         currentTxId_ = -1;
     }
 
-    std::cout << "[事务] 事务 #" << txId << " 提交成功\n";
+    std::cout << "[事务] |事务| #" << txId << " 提交成功\n";
     return true;
 }
 
@@ -125,6 +146,9 @@ bool TransactionManager::rollbackTransaction(int txId) {
     if (success) {
         tx->rollback();
         tx->clearOperations();
+
+        // 释放当前事务持有的所有锁
+        releaseAllLocks(txId);
 
         if (currentTxId_ == txId) {
             currentTxId_ = -1;
@@ -150,6 +174,14 @@ void TransactionManager::setCurrentTransaction(int txId) {
     if (transactions_.find(txId) != transactions_.end()) {
         currentTxId_ = txId;
     }
+}
+
+bool TransactionManager::hasActiveTransaction() const {
+    return currentTxId_ != -1;
+}
+
+int TransactionManager::getCurrentTxId() const {
+    return currentTxId_;
 }
 
 bool TransactionManager::logInsertToCurrent(const std::string& tableName,
@@ -194,7 +226,7 @@ bool TransactionManager::executeRollback(Transaction* tx) {
             if (op.rowIndex >= 0 && op.rowIndex < static_cast<int>(recs.size())) {
                 recs.erase(recs.begin() + op.rowIndex);
                 RecordManager::getInstance().writeRecs(op.tableName, recs);
-                std::cout << "[回滚] 撤销 INSERT 到\ " << op.tableName << " 行\ " << op.rowIndex << "\n";
+                std::cout << "[回滚] 撤销|  INSERT 到| " << op.tableName << " 行|  " << op.rowIndex << "\n";
             }
             break;
         }
@@ -208,7 +240,7 @@ bool TransactionManager::executeRollback(Transaction* tx) {
                 }
                 recs[op.rowIndex] = newLine;
                 RecordManager::getInstance().writeRecs(op.tableName, recs);
-                std::cout << "[回滚] 撤销 UPDATE 到\  " << op.tableName << " 行\ " << op.rowIndex << "\n";
+                std::cout << "[回滚] 撤销|  UPDATE 到|  " << op.tableName << " 行| " << op.rowIndex << "\n";
             }
             break;
         }
@@ -222,7 +254,7 @@ bool TransactionManager::executeRollback(Transaction* tx) {
             if (op.rowIndex >= 0 && op.rowIndex <= static_cast<int>(recs.size())) {
                 recs.insert(recs.begin() + op.rowIndex, newLine);
                 RecordManager::getInstance().writeRecs(op.tableName, recs);
-                std::cout << "[回滚] 撤销 DELETE 到\ " << op.tableName << " 行\ " << op.rowIndex << "\n";
+                std::cout << "[回滚] 撤销| DELETE 到| " << op.tableName << " 行| " << op.rowIndex << "\n";
             }
             break;
         }
@@ -242,4 +274,19 @@ std::vector<Transaction*> TransactionManager::getActiveTransactions() {
         }
     }
     return active;
+}
+
+// ========== TransactionManager 锁相关 ==========
+
+bool TransactionManager::acquireLock(const std::string& resource, LockType type, int timeoutMs) {
+    Transaction* tx = getCurrentTransaction();
+    if (!tx) {
+        // 不在事务中，不需要锁
+        return true;
+    }
+    return LockManager::getInstance().acquireLock(tx->getId(), resource, type, timeoutMs);
+}
+
+void TransactionManager::releaseAllLocks(int txId) {
+    LockManager::getInstance().releaseAllLocks(txId);
 }
