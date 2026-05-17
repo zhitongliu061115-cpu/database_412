@@ -14,7 +14,7 @@ TableManager& TableManager::getInstance() {
 }
 
 std::string TableManager::getTableMetaPath() {
-    return joinPath(DatabaseManager::getInstance().getDBPath(g_current_db), g_current_db + ".meta");
+    return joinPath(DatabaseManager::getInstance().getDBPath(g_current_db), "tables.meta");
 }
 
 std::string TableManager::getTableDir() {

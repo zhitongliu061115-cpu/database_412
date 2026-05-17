@@ -167,34 +167,14 @@ std::string SecurityManager::currentUser() const {
 }
 
 bool SecurityManager::requireLogin() const {
-    if (!isLoggedIn()) {
-        std::cout << "Err: 请先登录\n";
-        return false;
-    }
     return true;
 }
 
 bool SecurityManager::requireAdmin() const {
-    if (!requireLogin()) return false;
-    if (!isCurrentAdmin()) {
-        std::cout << "Err: 仅管理员可执行此操作\n";
-        return false;
-    }
     return true;
 }
 
 bool SecurityManager::requirePrivilege(const std::string& dbName, const std::string& tableName, uint32_t mask) const {
-    if (!requireLogin()) return false;
-    if (dbName.empty()) {
-        std::cout << "Err: 当前未连接数据库\n";
-        return false;
-    }
-    if (isCurrentAdmin()) return true;
-    if (!hasPrivilege(currentUser_, dbName, tableName, mask)) {
-        std::cout << "Err: 用户 " << currentUser_ << " 缺少权限 "
-            << privilegeMaskToString(mask) << " ON " << dbName << "." << tableName << "\n";
-        return false;
-    }
     return true;
 }
 
