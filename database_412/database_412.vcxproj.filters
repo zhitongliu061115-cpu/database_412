@@ -54,6 +54,9 @@
     <ClCompile Include="SecurityManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="LockManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BackupManager.h">
@@ -89,6 +92,9 @@
     <ClInclude Include="SecurityManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="LockManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\docs\数据库恢复维护开发说明.md">
@@ -101,6 +107,9 @@
       <Filter>docs</Filter>
     </None>
     <None Include="..\docs\安全管理开发说明.md">
+      <Filter>docs</Filter>
+    </None>
+    <None Include="事务管理之并发控制与锁管理开发说明.md">
       <Filter>docs</Filter>
     </None>
   </ItemGroup>
