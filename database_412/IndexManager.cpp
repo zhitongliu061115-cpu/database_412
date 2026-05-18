@@ -8,9 +8,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
 #include <limits>
 #include <memory>
 #include <set>
+#include <unordered_map>
 
 namespace {
 constexpr size_t BTREE_ORDER = 32;
@@ -21,7 +23,7 @@ struct BTreeNode {
     bool leaf;
     std::vector<std::string> keys;
     std::vector<std::unique_ptr<BTreeNode>> children;
-    std::vector<std::vector<int>> rows;
+    std::vector<std::vector<IndexEntry>> entries;
     BTreeNode* next;
 };
 
@@ -34,8 +36,8 @@ class BTreeIndex {
 public:
     BTreeIndex() : root_(std::make_unique<BTreeNode>(true)) {}
 
-    void insert(const std::string& key, int row) {
-        auto split = insertRecursive(root_.get(), key, row);
+    void insert(const IndexEntry& entry) {
+        auto split = insertRecursive(root_.get(), entry);
         if (!split) return;
 
         auto newRoot = std::make_unique<BTreeNode>(false);
@@ -45,8 +47,8 @@ public:
         root_ = std::move(newRoot);
     }
 
-    std::vector<int> lookup(const std::string& key, CompOp op) const {
-        std::vector<int> result;
+    std::vector<IndexEntry> lookupEntries(const std::string& key, CompOp op) const {
+        std::vector<IndexEntry> result;
         if (op == CompOp::NE) return result;
 
         if (op == CompOp::EQ) {
@@ -57,7 +59,7 @@ public:
             if (it == leaf->keys.end() || *it != key) return result;
 
             const size_t idx = static_cast<size_t>(it - leaf->keys.begin());
-            result.insert(result.end(), leaf->rows[idx].begin(), leaf->rows[idx].end());
+            result.insert(result.end(), leaf->entries[idx].begin(), leaf->entries[idx].end());
             return result;
         }
 
@@ -85,7 +87,7 @@ public:
                 }
 
                 if (matched) {
-                    result.insert(result.end(), leaf->rows[i].begin(), leaf->rows[i].end());
+                    result.insert(result.end(), leaf->entries[i].begin(), leaf->entries[i].end());
                 }
             }
             leaf = leaf->next;
@@ -100,12 +102,7 @@ public:
 
         while (leaf) {
             for (size_t i = 0; i < leaf->keys.size(); ++i) {
-                for (int row : leaf->rows[i]) {
-                    IndexEntry entry;
-                    safeStrncpy(entry.key, leaf->keys[i].c_str(), MAX_VALUE_LEN);
-                    entry.row = static_cast<int32_t>(row);
-                    entries.push_back(entry);
-                }
+                entries.insert(entries.end(), leaf->entries[i].begin(), leaf->entries[i].end());
             }
             leaf = leaf->next;
         }
@@ -120,19 +117,23 @@ private:
         return 0;
     }
 
-    std::unique_ptr<SplitResult> insertRecursive(BTreeNode* node, const std::string& key, int row) {
+    std::unique_ptr<SplitResult> insertRecursive(BTreeNode* node, const IndexEntry& entry) {
+        const std::string key = entry.key;
         if (node->leaf) {
             auto it = std::lower_bound(node->keys.begin(), node->keys.end(), key);
             const size_t idx = static_cast<size_t>(it - node->keys.begin());
 
             if (it != node->keys.end() && *it == key) {
-                auto& rowList = node->rows[idx];
-                auto rowIt = std::lower_bound(rowList.begin(), rowList.end(), row);
-                rowList.insert(rowIt, row);
+                auto& entryList = node->entries[idx];
+                auto entryIt = std::lower_bound(entryList.begin(), entryList.end(), entry.row,
+                    [](const IndexEntry& item, int32_t row) {
+                        return item.row < row;
+                    });
+                entryList.insert(entryIt, entry);
             }
             else {
                 node->keys.insert(it, key);
-                node->rows.insert(node->rows.begin() + idx, std::vector<int>{ row });
+                node->entries.insert(node->entries.begin() + idx, std::vector<IndexEntry>{ entry });
             }
 
             if (node->keys.size() <= BTREE_ORDER) return nullptr;
@@ -141,7 +142,7 @@ private:
 
         auto it = std::upper_bound(node->keys.begin(), node->keys.end(), key);
         const size_t childIdx = static_cast<size_t>(it - node->keys.begin());
-        auto split = insertRecursive(node->children[childIdx].get(), key, row);
+        auto split = insertRecursive(node->children[childIdx].get(), entry);
         if (!split) return nullptr;
 
         node->keys.insert(node->keys.begin() + childIdx, split->promotedKey);
@@ -156,9 +157,9 @@ private:
         auto right = std::make_unique<BTreeNode>(true);
 
         right->keys.assign(node->keys.begin() + mid, node->keys.end());
-        right->rows.assign(node->rows.begin() + mid, node->rows.end());
+        right->entries.assign(node->entries.begin() + mid, node->entries.end());
         node->keys.erase(node->keys.begin() + mid, node->keys.end());
-        node->rows.erase(node->rows.begin() + mid, node->rows.end());
+        node->entries.erase(node->entries.begin() + mid, node->entries.end());
 
         right->next = node->next;
         node->next = right.get();
@@ -210,6 +211,20 @@ private:
     std::unique_ptr<BTreeNode> root_;
 };
 
+struct CachedIndex {
+    std::string path;
+    std::time_t mtime;
+    BTreeIndex tree;
+};
+
+std::unordered_map<std::string, CachedIndex> g_indexCache;
+
+std::time_t getFileMTime(const std::string& path) {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) return 0;
+    return st.st_mtime;
+}
+
 std::string formatIndexKey(const std::string& value, DataType type) {
     std::string key = value;
 
@@ -258,6 +273,14 @@ DataType getColumnType(const std::string& tname, const std::string& col) {
     return DataType::VARCHAR;
 }
 
+BTreeIndex buildTreeFromEntries(const std::vector<IndexEntry>& entries) {
+    BTreeIndex tree;
+    for (const auto& entry : entries) {
+        tree.insert(entry);
+    }
+    return tree;
+}
+
 }
 
 IndexManager::IndexManager() {
@@ -285,7 +308,9 @@ std::vector<IndexEntry> IndexManager::loadIndex(const std::string& tname, const 
 
 void IndexManager::saveIndex(const std::string& tname, const std::string& col,
     const std::vector<IndexEntry>& entries) {
-    fileManager->writeAllStruct(getIndexPath(tname, col), entries);
+    const std::string path = getIndexPath(tname, col);
+    fileManager->writeAllStruct(path, entries);
+    g_indexCache.erase(path);
 }
 
 std::vector<IndexInfo> IndexManager::loadMeta() {
@@ -379,7 +404,9 @@ bool IndexManager::dropIndex(const std::string& tname, const std::string& col) {
         return false;
     }
 
-    std::remove(getIndexPath(tname, col).c_str());
+    const std::string indexPath = getIndexPath(tname, col);
+    std::remove(indexPath.c_str());
+    g_indexCache.erase(indexPath);
 
     auto meta = loadMeta();
     meta.erase(std::remove_if(meta.begin(), meta.end(), [&](const IndexInfo& info) {
@@ -449,15 +476,27 @@ void IndexManager::rebuildIndex(const std::string& tname, const std::string& col
     }
     if (colIdx == -1) return;
 
-    auto recs = RecordManager::getInstance().readRecs(tname);
     BTreeIndex tree;
 
-    for (size_t row = 0; row < recs.size(); ++row) {
-        auto cols = split(recs[row], '|');
+    const std::string recPath = joinPath(TableManager::getInstance().getTableDir(), tname + ".rec");
+    std::ifstream ifs(recPath, std::ios::binary);
+    std::string rec;
+    int32_t row = 0;
+    while (ifs) {
+        const std::streampos pos = ifs.tellg();
+        if (!std::getline(ifs, rec)) break;
+        if (rec.empty()) continue;
+
+        auto cols = split(rec, '|');
         if (colIdx < static_cast<int>(cols.size()) && !cols[colIdx].empty()) {
+            IndexEntry entry;
             const std::string key = formatIndexKey(cols[colIdx], colType);
-            tree.insert(key, static_cast<int>(row));
+            safeStrncpy(entry.key, key.c_str(), MAX_VALUE_LEN);
+            entry.row = row;
+            entry.offset = static_cast<int64_t>(pos);
+            tree.insert(entry);
         }
+        ++row;
     }
 
     saveIndex(tname, col, tree.toEntries());
@@ -477,7 +516,9 @@ void IndexManager::dropAllIndexes(const std::string& tname) {
     std::vector<IndexInfo> kept;
     for (const auto& info : meta) {
         if (std::string(info.table_name) == tname) {
-            std::remove(getIndexPath(tname, info.col_name).c_str());
+            const std::string indexPath = getIndexPath(tname, info.col_name);
+            std::remove(indexPath.c_str());
+            g_indexCache.erase(indexPath);
         }
         else {
             kept.push_back(info);
@@ -488,17 +529,65 @@ void IndexManager::dropAllIndexes(const std::string& tname) {
 
 std::vector<int> IndexManager::lookup(const std::string& tname, const std::string& col,
     const std::string& value, CompOp op) {
-    if (op == CompOp::NE) return {};
-
-    auto entries = loadIndex(tname, col);
-    if (entries.empty()) return {};
+    std::vector<int> rows;
+    if (op == CompOp::NE) return rows;
 
     const DataType colType = getColumnType(tname, col);
     const std::string formattedKey = formatIndexKey(value, colType);
+    const std::string indexPath = getIndexPath(tname, col);
+    const std::time_t mtime = getFileMTime(indexPath);
 
-    BTreeIndex tree;
-    for (const auto& entry : entries) {
-        tree.insert(entry.key, entry.row);
+    auto cacheIt = g_indexCache.find(indexPath);
+    if (cacheIt == g_indexCache.end() || cacheIt->second.mtime != mtime) {
+        auto entries = loadIndex(tname, col);
+        if (entries.empty()) return rows;
+
+        CachedIndex cached;
+        cached.path = indexPath;
+        cached.mtime = mtime;
+        cached.tree = buildTreeFromEntries(entries);
+
+        g_indexCache.erase(indexPath);
+        auto inserted = g_indexCache.emplace(indexPath, std::move(cached));
+        cacheIt = inserted.first;
     }
-    return tree.lookup(formattedKey, op);
+
+    const auto matches = cacheIt->second.tree.lookupEntries(formattedKey, op);
+    for (const auto& entry : matches) {
+        rows.push_back(entry.row);
+    }
+    return rows;
+}
+
+std::vector<int64_t> IndexManager::lookupOffsets(const std::string& tname, const std::string& col,
+    const std::string& value, CompOp op) {
+    std::vector<int64_t> offsets;
+    if (op == CompOp::NE) return offsets;
+
+    const DataType colType = getColumnType(tname, col);
+    const std::string formattedKey = formatIndexKey(value, colType);
+    const std::string indexPath = getIndexPath(tname, col);
+    const std::time_t mtime = getFileMTime(indexPath);
+
+    auto cacheIt = g_indexCache.find(indexPath);
+    if (cacheIt == g_indexCache.end() || cacheIt->second.mtime != mtime) {
+        auto entries = loadIndex(tname, col);
+        if (entries.empty()) return offsets;
+
+        CachedIndex cached;
+        cached.path = indexPath;
+        cached.mtime = mtime;
+        cached.tree = buildTreeFromEntries(entries);
+
+        g_indexCache.erase(indexPath);
+        auto inserted = g_indexCache.emplace(indexPath, std::move(cached));
+        cacheIt = inserted.first;
+    }
+
+    const auto matches = cacheIt->second.tree.lookupEntries(formattedKey, op);
+    offsets.reserve(matches.size());
+    for (const auto& entry : matches) {
+        if (entry.offset >= 0) offsets.push_back(entry.offset);
+    }
+    return offsets;
 }

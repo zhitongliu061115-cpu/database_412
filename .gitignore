@@ -353,6 +353,10 @@ ASALocalRun/
 # BeatPulse healthcheck temp database
 healthchecksdb
 
+# Local benchmark data generated for index performance testing
+.vscode/
+database_412/data/Schema/TEST_USER03/big_index_test.*
+
 # Backup folder for Package Reference Convert tool in Visual Studio 2017
 MigrationBackup/
 

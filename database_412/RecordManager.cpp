@@ -81,10 +81,30 @@ RecordManager& RecordManager::getInstance() {
 // ==================== 私有：读写记录文件 ====================
 std::vector<std::string> RecordManager::readRecs(const std::string& tname) {
     std::vector<std::string> res;
-    std::ifstream ifs(joinPath(TableManager::getInstance().getTableDir(), tname + ".rec"));
+    std::ifstream ifs(joinPath(TableManager::getInstance().getTableDir(), tname + ".rec"), std::ios::binary);
     std::string line;
     while (std::getline(ifs, line)) {
         if (!line.empty()) res.push_back(line);
+    }
+    return res;
+}
+
+std::vector<std::string> RecordManager::readRecsAtOffsets(const std::string& tname, const std::vector<int64_t>& offsets) {
+    std::vector<std::string> res;
+    std::ifstream ifs(joinPath(TableManager::getInstance().getTableDir(), tname + ".rec"));
+    if (!ifs.is_open()) return res;
+
+    std::string line;
+    for (int64_t offset : offsets) {
+        if (offset < 0) continue;
+        ifs.clear();
+        ifs.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+        if (std::getline(ifs, line) && !line.empty()) {
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            res.push_back(line);
+        }
     }
     return res;
 }
@@ -185,7 +205,6 @@ bool RecordManager::selectRecords(const std::string& tname) {
     if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_SELECT)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
     auto recs = readRecs(tname);
-
     std::cout << "\n--- " << tname << " ---\n";
     for (size_t i = 0; i < flds.size(); i++) {
         std::cout << flds[i].name << (i == flds.size() - 1 ? "\n" : "\t");
@@ -210,29 +229,22 @@ bool RecordManager::selectRecords(const std::string& tname,
     AggFuncType aggFunc, const std::string& aggCol) {
     if (!SecurityManager::getInstance().requirePrivilege(g_current_db, tname, PRIV_SELECT)) return false;
     auto flds = FieldManager::getInstance().getFields(tname);
-    auto recs = readRecs(tname);
 
     // 解析每行为 vector<string>
     std::vector<std::vector<std::string>> rows;
     IndexProbe probe;
     bool usedIndex = false;
     if (whereCond && tryBuildIndexProbe(tname, whereCond, probe)) {
-        const auto indexedRows = IndexManager::getInstance().lookup(tname, probe.col, probe.value, probe.op);
-        std::set<int> rowSet;
-        for (int row : indexedRows) {
-            if (row >= 0 && row < static_cast<int>(recs.size())) {
-                rowSet.insert(row);
-            }
-        }
-        for (size_t i = 0; i < recs.size(); ++i) {
-            if (rowSet.count(static_cast<int>(i)) != 0) {
-                rows.push_back(split(recs[i], '|'));
-            }
+        const auto offsets = IndexManager::getInstance().lookupOffsets(tname, probe.col, probe.value, probe.op);
+        const auto recs = readRecsAtOffsets(tname, offsets);
+        for (const auto& r : recs) {
+            rows.push_back(split(r, '|'));
         }
         usedIndex = true;
     }
 
     if (!usedIndex) {
+        auto recs = readRecs(tname);
         for (const auto& r : recs) {
             rows.push_back(split(r, '|'));
         }

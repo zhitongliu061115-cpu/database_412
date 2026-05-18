@@ -39,6 +39,7 @@ public:
 
     // 事务相关方法 
     std::vector<std::string> readRecs(const std::string& tname);
+    std::vector<std::string> readRecsAtOffsets(const std::string& tname, const std::vector<int64_t>& offsets);
     void writeRecs(const std::string& tname, const std::vector<std::string>& recs);
 
     // 带事务的插入/更新/删除
