@@ -1,12 +1,15 @@
 #include "SQLParser.h"
 
 #include "DatabaseManager.h"
+#include "BackupManager.h"
 #include "FieldManager.h"
+#include "FileManager.h"
 #include "IndexManager.h"
 #include "RecordManager.h"
 #include "SecurityManager.h"
 #include "TableManager.h"
 #include "Transaction.h"
+#include "LockManager.h"     // 新增：锁管理器头文件
 
 #include <cctype>
 #include <memory>
@@ -119,11 +122,30 @@ private:
     }
 
     std::string readQuoted(char quote) {
-        const size_t start = ++pos;
-        while (pos < sql.size() && sql[pos] != quote) ++pos;
-        const std::string value = sql.substr(start, pos - start);
-        if (pos < sql.size()) ++pos;
-        return value;
+        ++pos;
+        std::string value;
+        while (pos < sql.size()) {
+            const char ch = sql[pos];
+            if (ch == '\\' && pos + 1 < sql.size()) {
+                const char next = sql[pos + 1];
+                if (next == quote || next == '\\') {
+                    value.push_back(next);
+                    pos += 2;
+                    continue;
+                }
+                value.push_back(ch);
+                value.push_back(next);
+                pos += 2;
+                continue;
+            }
+            if (ch == quote) {
+                ++pos;
+                return value;
+            }
+            value.push_back(ch);
+            ++pos;
+        }
+        throw std::runtime_error("unterminated string");
     }
 
     std::string readNumber() {
@@ -156,7 +178,8 @@ private:
             "MIN", "MAX", "HAVING", "EXIT", "QUIT", "HELP", "NULL", "PRIMARY", "KEY",
             "INDEX", "UNIQUE",
             "BEGIN", "COMMIT", "ROLLBACK", "USER", "IDENTIFIED", "LOGIN", "LOGOUT",
-            "GRANT", "REVOKE", "ON", "TO", "FROM", "SHOW", "USERS", "GRANTS", "FOR", "ALL"
+            "GRANT", "REVOKE", "ON", "TO", "FROM", "SHOW", "USERS", "GRANTS", "FOR", "ALL",
+            "BACKUP", "RESTORE", "LOCKS"     // 新增 LOCKS 关键字
         };
         return keywords.count(s) > 0;
     }
@@ -599,7 +622,7 @@ static void parseGrant(Parser& p) {
     if (!p.matchKeyword("TO")) throw std::runtime_error("expect TO");
     const Token username = p.expectIdent();
     if (g_current_db.empty()) {
-        std::cout << "Err: please USE a database first\n";
+        std::cout << "Err: no active database context\n";
         return;
     }
     SecurityManager::getInstance().grantPrivilege(username.text, g_current_db, table.text, mask);
@@ -613,7 +636,7 @@ static void parseRevoke(Parser& p) {
     if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
     const Token username = p.expectIdent();
     if (g_current_db.empty()) {
-        std::cout << "Err: please USE a database first\n";
+        std::cout << "Err: no active database context\n";
         return;
     }
     SecurityManager::getInstance().revokePrivilege(username.text, g_current_db, table.text, mask);
@@ -629,7 +652,48 @@ static void parseShow(Parser& p) {
         SecurityManager::getInstance().showGrants(p.expectIdent().text);
         return;
     }
+    // 新增：SHOW LOCKS 命令
+    if (p.matchKeyword("LOCKS")) {
+        LockManager::getInstance().printLocks();
+        return;
+    }
     throw std::runtime_error("unknown SHOW command");
+}
+
+static bool parseBackup(Parser& p) {
+    if (!SecurityManager::getInstance().requireAdmin()) return false;
+    if (!p.matchKeyword("DATABASE")) throw std::runtime_error("expect DATABASE");
+    const Token dbName = p.expectIdent();
+    if (!p.matchKeyword("TO")) throw std::runtime_error("expect TO");
+    const Token filePath = p.expectStringOrIdent();
+    return BackupManager::getInstance().backupDatabase(dbName.text, filePath.text);
+}
+
+static bool parseRestore(Parser& p) {
+    if (!SecurityManager::getInstance().requireAdmin()) return false;
+    if (!p.matchKeyword("DATABASE")) throw std::runtime_error("expect DATABASE");
+    const Token dbName = p.expectIdent();
+    if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
+    const Token filePath = p.expectStringOrIdent();
+    return BackupManager::getInstance().restoreDatabase(dbName.text, filePath.text);
+}
+
+static bool shouldAppendLog(const std::string& sql) {
+    const std::string upper = toUpper(sql);
+    return upper.rfind("CREATE TABLE", 0) == 0 ||
+        upper.rfind("ALTER TABLE", 0) == 0 ||
+        upper.rfind("DROP TABLE", 0) == 0 ||
+        upper.rfind("INSERT INTO", 0) == 0 ||
+        upper.rfind("UPDATE ", 0) == 0 ||
+        upper.rfind("DELETE FROM", 0) == 0;
+}
+
+static bool shouldSkipLogForActiveTransaction(const std::string& sql) {
+    if (!TransactionManager::getInstance().hasActiveTransaction()) return false;
+    const std::string upper = toUpper(sql);
+    return upper.rfind("INSERT INTO", 0) == 0 ||
+        upper.rfind("UPDATE ", 0) == 0 ||
+        upper.rfind("DELETE FROM", 0) == 0;
 }
 
 SQLParser& SQLParser::getInstance() {
@@ -643,17 +707,20 @@ void SQLParser::showHelp() {
         << "  LOGOUT\n"
         << "  CREATE USER <user> IDENTIFIED BY <password>\n"
         << "  DROP USER <user>\n"
-        << "  GRANT <privileges> ON <table> TO <user>\n"
-        << "  REVOKE <privileges> ON <table> FROM <user>\n"
+        << "  GRANT <privileges> ON </td> TO <user>\n"
+        << "  REVOKE <privileges> ON <tr> FROM <user>\n"
         << "  SHOW USERS\n"
         << "  SHOW GRANTS FOR <user>\n"
+        << "  SHOW LOCKS                      -- 显示当前锁状态\n"   // 新增
+        << "  BACKUP DATABASE <db> TO <file>\n"
+        << "  RESTORE DATABASE <db> FROM <file>\n"
         << "  CREATE DATABASE <name>\n"
         << "  DROP DATABASE <name>\n"
         << "  USE <db>\n"
         << "  CREATE TABLE <name>\n"
         << "  DROP TABLE <name>\n"
         << "  CREATE [UNIQUE] INDEX <idx> ON <table>(<col>)\n"
-        << "  DROP INDEX <idx> [ON <table>]\n"
+        << "  DROP INDEX <idx> [ON </table>]\n"
         << "  ALTER TABLE <t> ADD [COLUMN] <col> <type> [NOT NULL]\n"
         << "  ALTER TABLE <t> DROP [COLUMN] <col>\n"
         << "  ALTER TABLE <t> MODIFY [COLUMN] <old> <new>\n"
@@ -679,76 +746,345 @@ bool SQLParser::execute(const std::string& sql) {
         if (first.type == TOK_END) return true;
 
         const std::string cmd = first.text;
+        bool success = true;
         if (cmd == "BEGIN") {
             p.consume(TOK_KEYWORD);
             parseBegin(p);
         }
         else if (cmd == "COMMIT") {
             p.consume(TOK_KEYWORD);
+            const bool hadActive = TransactionManager::getInstance().hasActiveTransaction();
             parseCommit(p);
+            success = hadActive && !TransactionManager::getInstance().hasActiveTransaction();
         }
         else if (cmd == "ROLLBACK") {
             p.consume(TOK_KEYWORD);
+            const bool hadActive = TransactionManager::getInstance().hasActiveTransaction();
             parseRollback(p);
+            success = hadActive && !TransactionManager::getInstance().hasActiveTransaction();
         }
         else if (cmd == "CREATE") {
             p.consume(TOK_KEYWORD);
-            if (p.matchKeyword("USER")) parseCreateUser(p);
-            else parseCreate(p);
+            if (p.matchKeyword("USER")) {
+                const std::string userFile = joinPath(g_root, "users.db");
+                const auto beforeSize = FileManager::getInstance().readAllStruct<UserInfo>(userFile).size();
+                parseCreateUser(p);
+                const auto afterSize = FileManager::getInstance().readAllStruct<UserInfo>(userFile).size();
+                success = afterSize > beforeSize;
+            }
+            else {
+                if (p.peek().type == TOK_KEYWORD && p.peek().text == "DATABASE") {
+                    const auto beforeSize = DatabaseManager::getInstance().getAllDBs().size();
+                    parseCreate(p);
+                    const auto afterSize = DatabaseManager::getInstance().getAllDBs().size();
+                    success = afterSize > beforeSize;
+                }
+                else if (p.peek().type == TOK_KEYWORD && p.peek().text == "TABLE") {
+                    if (g_current_db.empty()) {
+                        parseCreate(p);
+                        success = false;
+                    }
+                    else {
+                        const auto beforeSize = TableManager::getInstance().getAllTables().size();
+                        parseCreate(p);
+                        const auto afterSize = TableManager::getInstance().getAllTables().size();
+                        success = afterSize > beforeSize;
+                    }
+                }
+                else {
+                    parseCreate(p);
+                }
+            }
         }
         else if (cmd == "DROP") {
             p.consume(TOK_KEYWORD);
             if (p.matchKeyword("USER")) {
                 if (!SecurityManager::getInstance().requireAdmin()) return false;
-                SecurityManager::getInstance().dropUser(p.expectIdent().text);
+                success = SecurityManager::getInstance().dropUser(p.expectIdent().text);
             }
             else {
-                parseDrop(p);
+                if (p.peek().type == TOK_KEYWORD && p.peek().text == "DATABASE") {
+                    const auto beforeSize = DatabaseManager::getInstance().getAllDBs().size();
+                    parseDrop(p);
+                    const auto afterSize = DatabaseManager::getInstance().getAllDBs().size();
+                    success = afterSize + 1 == beforeSize;
+                }
+                else if (p.peek().type == TOK_KEYWORD && p.peek().text == "TABLE") {
+                    if (g_current_db.empty()) {
+                        parseDrop(p);
+                        success = false;
+                    }
+                    else {
+                        const auto beforeSize = TableManager::getInstance().getAllTables().size();
+                        parseDrop(p);
+                        const auto afterSize = TableManager::getInstance().getAllTables().size();
+                        success = afterSize + 1 == beforeSize;
+                    }
+                }
+                else {
+                    parseDrop(p);
+                }
             }
         }
         else if (cmd == "LOGIN") {
             p.consume(TOK_KEYWORD);
-            parseLogin(p);
+            const Token username = p.expectIdent();
+            const Token password = p.expectStringOrIdent();
+            success = SecurityManager::getInstance().login(username.text, password.text);
         }
         else if (cmd == "LOGOUT") {
             p.consume(TOK_KEYWORD);
+            const bool wasLoggedIn = SecurityManager::getInstance().isLoggedIn();
             SecurityManager::getInstance().logout();
+            success = wasLoggedIn && !SecurityManager::getInstance().isLoggedIn();
         }
         else if (cmd == "GRANT") {
             p.consume(TOK_KEYWORD);
-            parseGrant(p);
+            if (!SecurityManager::getInstance().requireAdmin()) return false;
+            const uint32_t mask = parsePrivilegeList(p);
+            if (!p.matchKeyword("ON")) throw std::runtime_error("expect ON");
+            const Token table = p.expectIdent();
+            if (!p.matchKeyword("TO")) throw std::runtime_error("expect TO");
+            const Token username = p.expectIdent();
+            if (g_current_db.empty()) {
+                std::cout << "Err: no active database context\n";
+                return false;
+            }
+            success = SecurityManager::getInstance().grantPrivilege(username.text, g_current_db, table.text, mask);
         }
         else if (cmd == "REVOKE") {
             p.consume(TOK_KEYWORD);
-            parseRevoke(p);
+            if (!SecurityManager::getInstance().requireAdmin()) return false;
+            const uint32_t mask = parsePrivilegeList(p);
+            if (!p.matchKeyword("ON")) throw std::runtime_error("expect ON");
+            const Token table = p.expectIdent();
+            if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
+            const Token username = p.expectIdent();
+            if (g_current_db.empty()) {
+                std::cout << "Err: no active database context\n";
+                return false;
+            }
+            success = SecurityManager::getInstance().revokePrivilege(username.text, g_current_db, table.text, mask);
         }
         else if (cmd == "SHOW") {
             p.consume(TOK_KEYWORD);
             parseShow(p);
+            success = true;
+        }
+        else if (cmd == "BACKUP") {
+            p.consume(TOK_KEYWORD);
+            success = parseBackup(p);
+        }
+        else if (cmd == "RESTORE") {
+            p.consume(TOK_KEYWORD);
+            success = parseRestore(p);
         }
         else if (cmd == "USE") {
             p.consume(TOK_KEYWORD);
-            DatabaseManager::getInstance().useDB(p.expectIdent().text);
+            success = DatabaseManager::getInstance().useDB(p.expectIdent().text);
         }
         else if (cmd == "ALTER") {
             p.consume(TOK_KEYWORD);
-            parseAlter(p);
+            if (!p.matchKeyword("TABLE")) throw std::runtime_error("expect TABLE");
+            const Token tname = p.expectIdent();
+            const std::vector<FieldInfo> beforeFields = FieldManager::getInstance().getFields(tname.text);
+            const std::string action = p.expectIdent().text;
+            if (action == "ADD") {
+                p.matchKeyword("COLUMN");
+                const Token col = p.expectIdent();
+                std::string type = p.expectIdent().text;
+                if (p.match(TOK_LPAREN)) {
+                    const std::string param = p.expectStringOrIdent().text;
+                    p.consume(TOK_RPAREN);
+                    type += "(" + param + ")";
+                }
+
+                bool notNull = false;
+                bool primaryKey = false;
+                while (true) {
+                    if (p.matchKeyword("NOT") && p.matchKeyword("NULL")) notNull = true;
+                    else if (p.matchKeyword("PRIMARY") && p.matchKeyword("KEY")) primaryKey = true;
+                    else break;
+                }
+                success = FieldManager::getInstance().addField(tname.text, col.text, type, notNull, primaryKey);
+            }
+            else if (action == "DROP") {
+                p.matchKeyword("COLUMN");
+                success = FieldManager::getInstance().dropField(tname.text, p.expectIdent().text);
+            }
+            else if (action == "MODIFY") {
+                p.matchKeyword("COLUMN");
+                const Token oldName = p.expectIdent();
+                const Token newName = p.expectIdent();
+                success = FieldManager::getInstance().modifyField(tname.text, oldName.text, newName.text);
+            }
+            else {
+                std::cout << "Err: unsupported ALTER action\n";
+                success = false;
+            }
         }
         else if (cmd == "INSERT") {
             p.consume(TOK_KEYWORD);
-            parseInsert(p);
+            if (!p.matchKeyword("INTO")) throw std::runtime_error("expect INTO");
+            const Token tname = p.expectIdent();
+
+            std::vector<std::string> cols;
+            std::vector<std::string> vals;
+            if (p.match(TOK_LPAREN)) {
+                while (true) {
+                    cols.push_back(p.expectIdent().text);
+                    if (!p.match(TOK_COMMA)) break;
+                }
+                p.consume(TOK_RPAREN);
+            }
+
+            if (!p.matchKeyword("VALUES")) throw std::runtime_error("expect VALUES");
+            p.match(TOK_LPAREN);
+            while (true) {
+                vals.push_back(p.expectStringOrIdent().text);
+                if (!p.match(TOK_COMMA)) break;
+            }
+            p.match(TOK_RPAREN);
+
+            if (TransactionManager::getInstance().hasActiveTransaction()) {
+                success = cols.empty()
+                    ? RecordManager::getInstance().insertRecordTx(tname.text, vals)
+                    : RecordManager::getInstance().insertRecordTx(tname.text, cols, vals);
+            }
+            else {
+                success = cols.empty()
+                    ? RecordManager::getInstance().insertRecord(tname.text, vals)
+                    : RecordManager::getInstance().insertRecord(tname.text, cols, vals);
+            }
         }
         else if (cmd == "SELECT") {
             p.consume(TOK_KEYWORD);
-            parseSelect(p);
+            std::vector<std::string> outCols;
+            if (!p.match(TOK_STAR)) {
+                while (true) {
+                    outCols.push_back(p.expectIdent().text);
+                    if (!p.match(TOK_COMMA)) break;
+                }
+            }
+            if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
+            const Token tname = p.expectIdent();
+
+            std::unique_ptr<ExprNode> whereCond;
+            if (p.matchKeyword("WHERE")) {
+                const auto fields = FieldManager::getInstance().getFields(tname.text);
+                whereCond = parseExpr(p, fields);
+            }
+
+            std::string groupByCol;
+            AggFuncType aggFunc = AggFuncType::NONE;
+            std::string aggCol;
+            if (p.matchKeyword("GROUP") && p.matchKeyword("BY")) {
+                groupByCol = p.expectIdent().text;
+            }
+
+            for (auto& col : outCols) {
+                const std::string upper = toUpper(col);
+                if (upper.find("COUNT(") == 0) {
+                    aggFunc = AggFuncType::COUNT;
+                    aggCol = col.substr(6, col.size() - 7);
+                }
+                else if (upper.find("SUM(") == 0) {
+                    aggFunc = AggFuncType::SUM;
+                    aggCol = col.substr(4, col.size() - 5);
+                }
+                else if (upper.find("AVG(") == 0) {
+                    aggFunc = AggFuncType::AVG;
+                    aggCol = col.substr(4, col.size() - 5);
+                }
+                else if (upper.find("MIN(") == 0) {
+                    aggFunc = AggFuncType::MIN;
+                    aggCol = col.substr(4, col.size() - 5);
+                }
+                else if (upper.find("MAX(") == 0) {
+                    aggFunc = AggFuncType::MAX;
+                    aggCol = col.substr(4, col.size() - 5);
+                }
+            }
+            if (aggFunc != AggFuncType::NONE) outCols.clear();
+
+            std::string orderByCol;
+            bool orderAsc = true;
+            if (p.matchKeyword("ORDER") && p.matchKeyword("BY")) {
+                orderByCol = p.expectIdent().text;
+                if (p.matchKeyword("DESC")) orderAsc = false;
+                else p.matchKeyword("ASC");
+            }
+
+            success = RecordManager::getInstance().selectRecords(
+                tname.text, outCols, whereCond.get(), orderByCol, orderAsc, groupByCol, aggFunc, aggCol);
         }
         else if (cmd == "UPDATE") {
             p.consume(TOK_KEYWORD);
-            parseUpdate(p);
+            const Token tname = p.expectIdent();
+            if (!p.matchKeyword("SET")) throw std::runtime_error("expect SET");
+            const Token setCol = p.expectIdent();
+            p.consume(TOK_EQUAL);
+            const Token setVal = p.expectStringOrIdent();
+
+            std::unique_ptr<ExprNode> whereCond;
+            if (p.matchKeyword("WHERE")) {
+                const auto fields = FieldManager::getInstance().getFields(tname.text);
+                whereCond = parseExpr(p, fields);
+            }
+            else {
+                std::cout << "Err: UPDATE must have WHERE\n";
+                return false;
+            }
+
+            if (whereCond &&
+                whereCond->type == ExprNode::UNARY &&
+                whereCond->left && whereCond->right &&
+                whereCond->left->type == ExprNode::LEAF &&
+                whereCond->right->type == ExprNode::LEAF &&
+                whereCond->left->colName == "row") {
+                const int row = std::stoi(whereCond->right->value);
+                success = RecordManager::getInstance().updateRecord(tname.text, setCol.text, setVal.text, row);
+            }
+            else if (TransactionManager::getInstance().hasActiveTransaction()) {
+                success = RecordManager::getInstance().updateRecordsTx(tname.text, setCol.text, setVal.text, whereCond.get());
+            }
+            else {
+                success = RecordManager::getInstance().updateRecords(tname.text, setCol.text, setVal.text, whereCond.get());
+            }
         }
         else if (cmd == "DELETE") {
             p.consume(TOK_KEYWORD);
-            parseDelete(p);
+            if (!p.matchKeyword("FROM")) throw std::runtime_error("expect FROM");
+            const Token tname = p.expectIdent();
+
+            std::unique_ptr<ExprNode> whereCond;
+            if (p.matchKeyword("WHERE")) {
+                const auto fields = FieldManager::getInstance().getFields(tname.text);
+                whereCond = parseExpr(p, fields);
+            }
+            else {
+                success = RecordManager::getInstance().deleteRecord(tname.text, -1);
+                if (success && shouldAppendLog(s) && !shouldSkipLogForActiveTransaction(s) && !g_current_db.empty()) {
+                    BackupManager::getInstance().appendLog(g_current_db, s);
+                }
+                return success;
+            }
+
+            if (whereCond &&
+                whereCond->type == ExprNode::UNARY &&
+                whereCond->left && whereCond->right &&
+                whereCond->left->type == ExprNode::LEAF &&
+                whereCond->right->type == ExprNode::LEAF &&
+                whereCond->left->colName == "row") {
+                const int row = std::stoi(whereCond->right->value);
+                success = RecordManager::getInstance().deleteRecord(tname.text, row);
+            }
+            else if (TransactionManager::getInstance().hasActiveTransaction()) {
+                success = RecordManager::getInstance().deleteRecordsTx(tname.text, whereCond.get());
+            }
+            else {
+                success = RecordManager::getInstance().deleteRecords(tname.text, whereCond.get());
+            }
         }
         else if (cmd == "EXIT" || cmd == "QUIT") {
             std::cout << "bye\n";
@@ -761,7 +1097,11 @@ bool SQLParser::execute(const std::string& sql) {
             std::cout << "unknown command\n";
             return false;
         }
-        return true;
+
+        if (success && shouldAppendLog(s) && !shouldSkipLogForActiveTransaction(s) && !g_current_db.empty()) {
+            BackupManager::getInstance().appendLog(g_current_db, s);
+        }
+        return success;
     }
     catch (const std::exception& e) {
         std::cout << "execute error: " << e.what() << std::endl;

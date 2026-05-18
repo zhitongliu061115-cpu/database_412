@@ -16,11 +16,17 @@ std::string toUpper(const std::string& s) {
 
 std::vector<std::string> split(const std::string& s, char delim) {
     std::vector<std::string> res;
-    std::stringstream ss(s);
     std::string item;
-    while (std::getline(ss, item, delim)) {
-        if (!item.empty()) res.push_back(item);
+    for (char ch : s) {
+        if (ch == delim) {
+            res.push_back(item);
+            item.clear();
+        }
+        else {
+            item.push_back(ch);
+        }
     }
+    res.push_back(item);
     return res;
 }
 
@@ -81,12 +87,12 @@ bool compareValues(const std::string& a, const std::string& b, DataType type, Co
 // 值校验
 bool validateValue(const std::string& val, DataType type, int param) {
     if (type == DataType::INT) {
-        try { std::stoi(val); }
+        try { (void)std::stoi(val); }
         catch (...) { return false; }
         return true;
     }
     else if (type == DataType::DOUBLE) {
-        try { std::stod(val); }
+        try { (void)std::stod(val); }
         catch (...) { return false; }
         return true;
     }

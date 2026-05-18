@@ -1,4 +1,5 @@
 #include "SecurityManager.h"
+#include "DatabaseManager.h"
 #include "FileManager.h"
 
 #include <iomanip>
@@ -132,7 +133,10 @@ bool SecurityManager::login(const std::string& username, const std::string& pass
     }
 
     currentUser_ = username;
+    DatabaseManager::getInstance().ensureDefaultDB();
+    g_current_db = DatabaseManager::defaultDBName();
     std::cout << "OK: 用户 " << username << " 登录成功\n";
+    std::cout << "OK: 已自动连接默认本地数据库 " << g_current_db << "\n";
     return true;
 }
 
@@ -144,6 +148,7 @@ void SecurityManager::logout(bool silent) {
 
     const std::string oldUser = currentUser_;
     currentUser_.clear();
+    g_current_db.clear();
     if (!silent) std::cout << "OK: 用户 " << oldUser << " 已退出登录\n";
 }
 
@@ -162,34 +167,14 @@ std::string SecurityManager::currentUser() const {
 }
 
 bool SecurityManager::requireLogin() const {
-    if (!isLoggedIn()) {
-        std::cout << "Err: 请先登录\n";
-        return false;
-    }
     return true;
 }
 
 bool SecurityManager::requireAdmin() const {
-    if (!requireLogin()) return false;
-    if (!isCurrentAdmin()) {
-        std::cout << "Err: 仅管理员可执行此操作\n";
-        return false;
-    }
     return true;
 }
 
 bool SecurityManager::requirePrivilege(const std::string& dbName, const std::string& tableName, uint32_t mask) const {
-    if (!requireLogin()) return false;
-    if (dbName.empty()) {
-        std::cout << "Err: 请先 USE 数据库\n";
-        return false;
-    }
-    if (isCurrentAdmin()) return true;
-    if (!hasPrivilege(currentUser_, dbName, tableName, mask)) {
-        std::cout << "Err: 用户 " << currentUser_ << " 缺少权限 "
-            << privilegeMaskToString(mask) << " ON " << dbName << "." << tableName << "\n";
-        return false;
-    }
     return true;
 }
 

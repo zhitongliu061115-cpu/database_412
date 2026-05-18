@@ -158,6 +158,7 @@ struct FieldInfo {
 
 // 前向声明
 class TransactionManager;
+enum class LockType;
 
 // 全局变量声明
 extern thread_local std::string g_current_db;

@@ -27,10 +27,12 @@ struct IndexInfo {
 struct IndexEntry {
     char key[MAX_VALUE_LEN];
     int32_t row;
+    int64_t offset;
 
     IndexEntry() {
         memset(this, 0, sizeof(IndexEntry));
         row = -1;
+        offset = -1;
     }
 };
 #pragma pack(pop)
@@ -66,6 +68,8 @@ public:
     // ====== 索引查找（核心） ======
     // 根据条件返回匹配的行号列表。NE 操作返回空 vector 表示走全表扫描
     std::vector<int> lookup(const std::string& tname, const std::string& col,
+        const std::string& value, CompOp op);
+    std::vector<int64_t> lookupOffsets(const std::string& tname, const std::string& col,
         const std::string& value, CompOp op);
 
 private:
